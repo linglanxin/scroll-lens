@@ -1,0 +1,33 @@
+# Python & Virtual Environments
+.venv/
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment & Local Data
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-wal
+*.db-shm
+.secret_key
+
+# Git Worktrees
+.worktrees/
+
+# Frontend (future)
+frontend/dist/
+frontend/node_modules/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
