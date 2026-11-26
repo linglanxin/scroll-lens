@@ -1,0 +1,18 @@
+[Unit]
+Description=ScrollLens (卷镜) Lightweight AI Reading & Document Q&A Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/scroll-lens/backend
+EnvironmentFile=/opt/scroll-lens/deploy/.env
+ExecStart=/opt/scroll-lens/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=always
+RestartSec=3
+MemoryMax=250M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
