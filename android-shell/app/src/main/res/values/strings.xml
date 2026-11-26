@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ScrollLens 卷镜</string>
+    <string name="server_config_title">服务器地址配置</string>
+    <string name="server_name_hint">备注名称（如：阿里云 ECS / 家里电脑）</string>
+    <string name="server_url_hint">服务器地址（如：http://192.168.1.10:8000）</string>
+    <string name="btn_test_connection">测试连通性</string>
+    <string name="btn_save_and_enter">保存并进入</string>
+    <string name="saved_servers_header">已保存的服务器</string>
+    <string name="btn_retry">重新加载</string>
+    <string name="btn_switch_server">切换服务器</string>
+    <string name="offline_title">无法连接到 ScrollLens 服务器</string>
+    <string name="offline_desc">请检查服务器是否启动、端口是否放行，或切换其他地址。</string>
+    <string name="active_badge">当前使用</string>
+    <string name="btn_use_server">切换</string>
+    <string name="btn_delete_server">删除</string>
+    <string name="back_press_exit_hint">再按一次返回退出 ScrollLens</string>
+    <string name="testing_connection">正在检测 /api/v1/health ...</string>
+    <string name="invalid_url_msg">请输入有效的 http:// 或 https:// 地址</string>
+    <string name="connection_ok_fmt">连接成功（延迟 %1$d ms）</string>
+    <string name="connection_fail_fmt">连接失败：%1$s</string>
+    <string name="saved_no_server_hint">尚未保存服务器，请在上方填写并保存。</string>
+</resources>
