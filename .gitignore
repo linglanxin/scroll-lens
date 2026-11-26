@@ -26,6 +26,16 @@ data/
 frontend/dist/
 frontend/node_modules/
 
+# Android Gradle build artifacts
+android-shell/.gradle/
+android-shell/build/
+android-shell/app/build/
+android-shell/local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
 # OS & Editor
 .DS_Store
 Thumbs.db

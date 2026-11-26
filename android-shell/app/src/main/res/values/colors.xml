@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#1E3A5F</color>
+    <color name="primary_dark">#142842</color>
+    <color name="surface_bg">#F7F8FA</color>
+    <color name="surface_card">#FFFFFF</color>
+    <color name="text_primary">#111827</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="divider">#E5E7EB</color>
+    <color name="error_red">#DC2626</color>
+    <color name="success_green">#15803D</color>
+    <color name="launcher_bg">#1E3A5F</color>
+</resources>

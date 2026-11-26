@@ -1,0 +1,15 @@
+services:
+  scroll-lens:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: scroll-lens
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ../data:/app/data
+      - ../frontend/dist:/app/frontend/dist:ro
+    mem_limit: 250m
