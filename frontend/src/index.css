@@ -8,10 +8,26 @@ html,
 body,
 #root {
   height: 100%;
+  height: 100dvh;
   margin: 0;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* Subtle custom scrollbars */
+.sl-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.sl-pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* Windows & Desktop clean thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border-strong)) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -22,31 +38,117 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--border-strong));
+  background: rgb(var(--border-strong) / 0.7);
   border-radius: 9999px;
 }
 
-/* Compact Markdown reading styles inside chat bubbles & summaries */
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--text-muted) / 0.7);
+}
+
+/* Tactile controls & micro-interactions */
+.sl-btn {
+  transition:
+    transform var(--t-press) var(--ease-out),
+    background-color var(--t-hover) ease,
+    border-color var(--t-hover) ease,
+    color var(--t-hover) ease,
+    opacity var(--t-hover) ease;
+}
+.sl-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes sl-pop-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes sl-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sl-slide-left {
+    from {
+      opacity: 0;
+      transform: translateX(-16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes sl-slide-right {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .sl-animate-pop {
+    animation: sl-pop-up var(--t-ui) var(--ease-out) both;
+  }
+
+  .sl-animate-fade {
+    animation: sl-fade-in 180ms ease both;
+  }
+
+  .sl-animate-drawer-left {
+    animation: sl-slide-left 220ms var(--ease-out) both;
+  }
+
+  .sl-animate-drawer-right {
+    animation: sl-slide-right 220ms var(--ease-out) both;
+  }
+}
+
+/* Editorial Markdown reading typography */
 .sl-prose {
-  @apply text-sm leading-relaxed text-ink;
+  @apply text-[14.5px] leading-[1.7] text-ink break-words;
+}
+.sl-prose > *:first-child {
+  margin-top: 0;
+}
+.sl-prose > *:last-child {
+  margin-bottom: 0;
 }
 .sl-prose h1,
 .sl-prose h2,
 .sl-prose h3 {
-  @apply font-semibold text-ink mt-3 mb-1.5;
+  @apply font-semibold text-ink tracking-tight mt-4 mb-1.5;
+}
+.sl-prose h1 {
+  @apply text-base;
 }
 .sl-prose h2 {
-  @apply text-base;
+  @apply text-[15px];
 }
 .sl-prose h3 {
   @apply text-sm;
 }
 .sl-prose p {
-  @apply my-1.5;
+  @apply my-2;
 }
 .sl-prose ul,
 .sl-prose ol {
-  @apply my-1.5 pl-5;
+  @apply my-2 pl-5 space-y-1;
 }
 .sl-prose ul {
   @apply list-disc;
@@ -54,16 +156,24 @@ body,
 .sl-prose ol {
   @apply list-decimal;
 }
+.sl-prose blockquote {
+  @apply my-2.5 border-l-2 border-accent pl-3 text-ink-secondary;
+}
 .sl-prose code {
-  @apply rounded bg-hover px-1 py-0.5 font-mono text-xs;
+  @apply rounded bg-elevated px-1.5 py-0.5 font-mono text-[12px] border border-line;
 }
 .sl-prose pre {
-  @apply my-2 overflow-x-auto rounded-lg bg-elevated p-3 border border-line;
+  @apply my-2.5 overflow-x-auto rounded-xl bg-elevated p-3 border border-line text-xs;
+}
+.sl-prose pre code {
+  @apply border-0 bg-transparent p-0;
 }
 .sl-prose table {
-  @apply my-2 w-full border-collapse text-xs;
+  @apply my-2.5 block w-full overflow-x-auto border-collapse text-xs;
 }
-.sl-prose th,
+.sl-prose th {
+  @apply border-b border-line-strong bg-elevated/70 px-2.5 py-1.5 text-left font-semibold text-ink;
+}
 .sl-prose td {
-  @apply border border-line px-2 py-1 text-left;
+  @apply border-b border-line px-2.5 py-1.5 text-left text-ink-secondary;
 }
