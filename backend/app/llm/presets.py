@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+PROVIDER_PRESETS: list[dict[str, str]] = [
+    {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "protocol": "openai_compat",
+        "base_url": "https://api.deepseek.com/v1",
+        "default_model": "deepseek-chat",
+        "description": "DeepSeek 官方接口（推荐高性价比查书与卷纲生成）",
+    },
+    {
+        "id": "openai",
+        "name": "OpenAI (ChatGPT)",
+        "protocol": "openai_compat",
+        "base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o-mini",
+        "description": "OpenAI 官方 API",
+    },
+    {
+        "id": "anthropic",
+        "name": "Anthropic (Claude)",
+        "protocol": "anthropic",
+        "base_url": "https://api.anthropic.com",
+        "default_model": "claude-sonnet-4-20250514",
+        "description": "Claude 官方及原生 Anthropic 协议中转站",
+    },
+    {
+        "id": "gemini",
+        "name": "Google Gemini",
+        "protocol": "gemini",
+        "base_url": "https://generativelanguage.googleapis.com",
+        "default_model": "gemini-2.5-flash",
+        "description": "Google Gemini 原生 API",
+    },
+    {
+        "id": "siliconflow",
+        "name": "硅基流动 (SiliconFlow)",
+        "protocol": "openai_compat",
+        "base_url": "https://api.siliconflow.cn/v1",
+        "default_model": "deepseek-ai/DeepSeek-V3",
+        "description": "国内直连 OpenAI 兼容聚合平台",
+    },
+    {
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "protocol": "openai_compat",
+        "base_url": "https://openrouter.ai/api/v1",
+        "default_model": "deepseek/deepseek-chat",
+        "description": "OpenRouter 多模型聚合网关",
+    },
+    {
+        "id": "qwen",
+        "name": "通义千问 (DashScope)",
+        "protocol": "openai_compat",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "default_model": "qwen-plus",
+        "description": "阿里云百炼 OpenAI 兼容模式",
+    },
+    {
+        "id": "custom_relay",
+        "name": "自定义中转站 (One-API / New-API)",
+        "protocol": "openai_compat",
+        "base_url": "https://your-relay.example.com/v1",
+        "default_model": "gpt-4o-mini",
+        "description": "任意 OpenAI 兼容第三方中转站",
+    },
+]
