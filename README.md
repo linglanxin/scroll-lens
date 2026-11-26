@@ -4,13 +4,13 @@
 
 - 技术设计文档：[docs/design_doc.md](docs/design_doc.md)
 - 前端接口交接：[docs/FRONTEND_HANDOFF.md](docs/FRONTEND_HANDOFF.md)
-- Claude Opus 视觉重塑指南：[docs/CLAUDE_REDESIGN_GUIDE.md](docs/CLAUDE_REDESIGN_GUIDE.md)
+- 前端视觉规范：[docs/UI_DESIGN_SYSTEM.md](docs/UI_DESIGN_SYSTEM.md)
 - 开源协议：[MIT License](LICENSE)
 
 ## 仓库结构与完成度
 
 - [`backend/`](backend/pyproject.toml)（**已完成**）：FastAPI + SQLite FTS5 (`content=''`) 双模式后端、多用户鉴权/隔离、3 协议 BYOK 适配层、6 工具查书 Agent 与卷纲生成。
-- [`frontend/`](frontend/package.json)（**功能骨架已完成，可随时交给 Claude Opus 打磨审美**）：React + Vite + Tailwind CSS + Zustand 分层前端（`types/`、`api/`、`stores/` 契约锁死，`components/` 与 `pages/` 已 100% 跑通编译与全链路功能）。
+- [`frontend/`](frontend/package.json)（**已完成**）：React + Vite + Tailwind CSS + Zustand 前端（含与安卓图标同源的品牌视觉、React Bits 风格 `PromptBar` 微交互、Windows 桌面三栏与手机/安卓 WebView `100dvh` 自适应布局）。
 - [`android-shell/`](android-shell/app/build.gradle.kts)（**已完成**）：通用开源 Kotlin WebView 套壳工程（包名 `io.github.scrolllens.app`）。
 - [`.github/workflows/`](.github/workflows/build-apk.yml)（**已完成**）：GitHub Actions 自动构建通用 APK 与后端 CI。
 - [`deploy/`](deploy/install-ecs.sh)（**已完成**）：Ubuntu 22.04 ECS 一键部署脚本、systemd 模板、Nginx 配置与 Docker Compose。

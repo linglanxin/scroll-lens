@@ -16,6 +16,7 @@ export default {
         accent: "rgb(var(--accent) / <alpha-value>)",
         "accent-fg": "rgb(var(--accent-fg) / <alpha-value>)",
         "accent-soft": "rgb(var(--accent-soft) / <alpha-value>)",
+        lens: "rgb(var(--accent-lens) / <alpha-value>)",
         danger: "rgb(var(--danger) / <alpha-value>)",
         success: "rgb(var(--success) / <alpha-value>)",
         warning: "rgb(var(--warning) / <alpha-value>)",
@@ -23,8 +24,9 @@ export default {
       fontFamily: {
         sans: [
           '"PingFang SC"',
-          '"Hiragino Sans GB"',
+          '"Microsoft YaHei UI"',
           '"Microsoft YaHei"',
+          '"Noto Sans SC"',
           "system-ui",
           "-apple-system",
           "sans-serif",
@@ -32,10 +34,11 @@ export default {
         serif: [
           '"Noto Serif SC"',
           '"Source Han Serif SC"',
+          '"Songti SC"',
           "Georgia",
           "serif",
         ],
-        mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
+        mono: ['"JetBrains Mono"', "Consolas", "ui-monospace", "SFMono-Regular", "monospace"],
       },
     },
   },

@@ -1,35 +1,44 @@
-/* Coupled semantic design tokens — Claude Opus may freely refine these palettes & themes */
+/* ScrollLens Design Tokens — Brand: #1E3A5F (Deep Ink Navy) & #93C5FD (Sky-Blue Lens) */
 :root {
-  --bg-canvas: 247 246 242;
+  --bg-canvas: 248 248 246;
   --bg-surface: 255 255 255;
-  --bg-elevated: 251 250 247;
-  --bg-hover: 239 237 230;
-  --border-subtle: 229 226 218;
-  --border-strong: 204 199 188;
-  --text-primary: 24 24 27;
-  --text-secondary: 82 82 91;
-  --text-muted: 145 145 155;
+  --bg-elevated: 242 242 238;
+  --bg-hover: 234 234 229;
+  --border-subtle: 228 228 223;
+  --border-strong: 208 208 201;
+  --text-primary: 20 23 26;
+  --text-secondary: 82 88 96;
+  --text-muted: 101 107 115;
   --accent: 30 58 95;
   --accent-fg: 255 255 255;
-  --accent-soft: 226 235 245;
-  --danger: 190 45 45;
-  --success: 22 128 61;
-  --warning: 180 105 14;
+  --accent-soft: 230 238 248;
+  --accent-lens: 147 197 253;
+  --danger: 185 38 38;
+  --success: 21 128 61;
+  --warning: 161 98 7;
+
+  /* Motion tokens */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  --t-press: 130ms;
+  --t-hover: 170ms;
+  --t-ui: 220ms;
 }
 
 [data-theme="dark"] {
-  --bg-canvas: 18 20 24;
-  --bg-surface: 26 29 35;
-  --bg-elevated: 34 38 46;
-  --bg-hover: 45 50 60;
-  --border-subtle: 49 54 65;
-  --border-strong: 74 81 97;
-  --text-primary: 238 240 244;
-  --text-secondary: 168 175 189;
-  --text-muted: 112 120 135;
-  --accent: 96 165 250;
-  --accent-fg: 15 23 42;
-  --accent-soft: 30 48 76;
+  --bg-canvas: 14 15 17;
+  --bg-surface: 21 23 26;
+  --bg-elevated: 29 32 36;
+  --bg-hover: 38 42 48;
+  --border-subtle: 36 40 46;
+  --border-strong: 58 64 74;
+  --text-primary: 244 245 247;
+  --text-secondary: 178 183 192;
+  --text-muted: 142 149 160;
+  --accent: 147 197 253;
+  --accent-fg: 15 27 45;
+  --accent-soft: 24 38 58;
+  --accent-lens: 147 197 253;
   --danger: 248 113 113;
   --success: 74 222 128;
   --warning: 251 191 36;

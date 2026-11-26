@@ -27,7 +27,7 @@ export function SettingsPage() {
   const { presets, providers, refreshProviders, setActiveView } = useAppStore();
   const { user } = useAuthStore();
 
-  // Provider form
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("deepseek");
   const [name, setName] = useState("DeepSeek");
   const [protocol, setProtocol] = useState<ProtocolType>("openai_compat");
   const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com/v1");
@@ -41,7 +41,6 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Admin state
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
 
@@ -59,6 +58,7 @@ export function SettingsPage() {
   }, [user?.role]);
 
   function applyPreset(preset: ProviderPreset) {
+    setSelectedPresetId(preset.id);
     setName(preset.name);
     setProtocol(preset.protocol);
     setBaseUrl(preset.base_url);
@@ -156,26 +156,26 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-canvas px-4 py-6">
+    <div className="flex-1 overflow-y-auto bg-canvas px-4 py-6 sl-pb-safe">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setActiveView("workspace")}
-              className="flex items-center gap-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-ink hover:bg-hover"
+              className="sl-btn inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-xs font-medium text-ink hover:border-line-strong"
             >
               <ArrowLeft className="h-4 w-4" />
               <span>返回工作台</span>
             </button>
-            <h1 className="text-lg font-semibold text-ink">模型配置与系统设置</h1>
+            <h1 className="text-base sm:text-lg font-semibold text-ink">模型配置与系统设置</h1>
           </div>
 
           {hasAndroidBridge && (
             <button
               type="button"
               onClick={() => window.ScrollLensApp?.openServerConfig()}
-              className="flex items-center gap-1.5 rounded-lg border border-accent bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent"
+              className="sl-btn inline-flex h-9 items-center gap-1.5 rounded-xl border border-accent bg-accent-soft px-3 text-xs font-medium text-accent"
             >
               <Smartphone className="h-4 w-4" />
               <span>切换/配置服务器地址</span>
@@ -184,52 +184,67 @@ export function SettingsPage() {
         </div>
 
         {msg && (
-          <div className="rounded-xl border border-line bg-surface px-4 py-2.5 text-xs text-ink">
-            {msg}
+          <div className="sl-animate-pop flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-2.5 text-xs text-ink">
+            <span>{msg}</span>
+            <button type="button" onClick={() => setMsg(null)} className="ml-3 underline">
+              关闭
+            </button>
           </div>
         )}
 
-        {/* Provider Presets + Form */}
-        <section className="rounded-2xl border border-line bg-surface p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Cpu className="h-4 w-4 text-accent" />
-            <h2 className="text-sm font-semibold text-ink">
-              添加模型 / 中转站（API Key 服务端对称加密保存）
-            </h2>
+        {/* Provider Configuration */}
+        <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-accent" />
+              <h2 className="text-sm font-semibold text-ink">添加模型与中转站 (BYOK)</h2>
+            </div>
+            <span className="text-[11px] text-ink-muted">API Key 服务端对称加密保存</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {presets.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => applyPreset(p)}
-                className="rounded-xl border border-line bg-elevated p-2.5 text-left transition hover:border-accent"
-              >
-                <div className="text-xs font-semibold text-ink truncate">{p.name}</div>
-                <div className="mt-0.5 text-[10px] text-ink-muted truncate">{p.protocol}</div>
-              </button>
-            ))}
+            {presets.map((p) => {
+              const active = selectedPresetId === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className={`sl-btn rounded-xl border p-2.5 text-left ${
+                    active
+                      ? "border-accent bg-accent-soft/60"
+                      : "border-line bg-elevated/60 hover:border-line-strong"
+                  }`}
+                >
+                  <div className="text-xs font-semibold text-ink truncate">{p.name}</div>
+                  <div className="mt-0.5 text-[11px] text-ink-muted truncate">{p.protocol}</div>
+                </button>
+              );
+            })}
           </div>
 
-          <form onSubmit={handleCreateProvider} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <form onSubmit={handleCreateProvider} className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="mb-1 block text-xs text-ink-secondary">配置名称</label>
+              <label className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                配置名称
+              </label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-xs text-ink"
+                className="h-9 w-full rounded-xl border border-line bg-elevated px-3 text-xs text-ink outline-none focus:border-accent"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-ink-secondary">协议类型</label>
+              <label className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                协议类型
+              </label>
               <select
                 value={protocol}
                 onChange={(e) => setProtocol(e.target.value as ProtocolType)}
-                className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-xs text-ink"
+                className="h-9 w-full rounded-xl border border-line bg-elevated px-3 text-xs text-ink outline-none focus:border-accent"
               >
                 <option value="openai_compat">OpenAI 兼容（DeepSeek/ChatGPT/中转站）</option>
                 <option value="anthropic">Anthropic 原生（Claude）</option>
@@ -238,30 +253,36 @@ export function SettingsPage() {
             </div>
 
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-ink-secondary">Base URL</label>
+              <label className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                Base URL
+              </label>
               <input
                 type="url"
                 required
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-xs text-ink font-mono"
+                className="h-9 w-full rounded-xl border border-line bg-elevated px-3 text-xs text-ink font-mono outline-none focus:border-accent"
               />
             </div>
 
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-ink-secondary">API Key</label>
+              <label className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                API Key
+              </label>
               <input
                 type="password"
                 required
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="sk-..."
-                className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-xs text-ink font-mono"
+                className="h-9 w-full rounded-xl border border-line bg-elevated px-3 text-xs text-ink font-mono outline-none focus:border-accent"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-ink-secondary">模型名称</label>
+              <label className="mb-1.5 block text-xs font-medium text-ink-secondary">
+                模型名称
+              </label>
               <div className="flex gap-1.5">
                 <input
                   type="text"
@@ -269,7 +290,7 @@ export function SettingsPage() {
                   list="sl-fetched-models"
                   value={modelName}
                   onChange={(e) => setModelName(e.target.value)}
-                  className="flex-1 rounded-lg border border-line bg-elevated px-3 py-2 text-xs text-ink font-mono"
+                  className="h-9 flex-1 rounded-xl border border-line bg-elevated px-3 text-xs text-ink font-mono outline-none focus:border-accent"
                 />
                 <datalist id="sl-fetched-models">
                   {fetchedModels.map((m) => (
@@ -280,7 +301,7 @@ export function SettingsPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => void handleFetchModels()}
-                  className="flex items-center gap-1 rounded-lg border border-line bg-elevated px-2.5 py-2 text-xs text-ink hover:bg-hover"
+                  className="sl-btn inline-flex h-9 items-center gap-1 rounded-xl border border-line bg-elevated px-3 text-xs text-ink hover:border-line-strong"
                   title="自动拉取模型列表"
                 >
                   <Download className="h-3.5 w-3.5" />
@@ -289,8 +310,8 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex flex-col justify-end gap-1.5 text-xs text-ink-secondary">
-              <label className="flex items-center gap-2">
+            <div className="flex flex-col justify-end gap-2 text-xs text-ink-secondary">
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={isDefault}
@@ -298,7 +319,7 @@ export function SettingsPage() {
                 />
                 <span>设为默认对话模型</span>
               </label>
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={useReact}
@@ -309,32 +330,35 @@ export function SettingsPage() {
             </div>
 
             {probeResult && (
-              <div className="sm:col-span-2 rounded-lg border border-line bg-elevated px-3 py-2 text-xs space-y-1">
-                <div className="flex items-center gap-2">
+              <div className="sm:col-span-2 rounded-xl border border-line bg-elevated/80 px-3.5 py-2.5 text-xs space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
                   {probeResult.connectivity_ok ? (
                     <CheckCircle2 className="h-4 w-4 text-success" />
                   ) : (
                     <XCircle className="h-4 w-4 text-danger" />
                   )}
                   <span className="font-medium text-ink">
-                    {probeResult.connectivity_ok
-                      ? `连通正常（${probeResult.latency_ms} ms）`
-                      : "连通失败"}
+                    {probeResult.connectivity_ok ? (
+                      <span className="sl-num">连通正常（{probeResult.latency_ms} ms）</span>
+                    ) : (
+                      "连通失败"
+                    )}
                   </span>
                   <span className="text-ink-secondary">
-                    · Tool Calling: {probeResult.supports_tools ? "支持" : "不支持（建议 ReAct 降级）"}
+                    · Tool Calling:{" "}
+                    {probeResult.supports_tools ? "支持" : "不支持（建议 ReAct 降级）"}
                   </span>
                 </div>
                 <div className="text-[11px] text-ink-secondary">{probeResult.detail}</div>
               </div>
             )}
 
-            <div className="sm:col-span-2 flex flex-wrap gap-2 pt-1">
+            <div className="sm:col-span-2 flex flex-wrap gap-2.5 pt-1">
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void handleTestForm()}
-                className="flex items-center gap-1.5 rounded-lg border border-line bg-elevated px-4 py-2 text-xs font-medium text-ink hover:bg-hover"
+                className="sl-btn inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-elevated px-4 text-xs font-medium text-ink hover:border-line-strong"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
                 <span>测试连通性与 Tool Calling</span>
@@ -342,14 +366,14 @@ export function SettingsPage() {
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-lg bg-accent px-5 py-2 text-xs font-medium text-accent-fg hover:opacity-95"
+                className="sl-btn h-9 rounded-xl bg-accent px-5 text-xs font-medium text-accent-fg"
               >
                 保存模型配置
               </button>
             </div>
           </form>
 
-          {/* Saved providers */}
+          {/* Saved Providers */}
           <div className="border-t border-line pt-4 space-y-2">
             <h3 className="text-xs font-semibold text-ink-secondary">已保存配置</h3>
             {providers.length === 0 ? (
@@ -358,21 +382,21 @@ export function SettingsPage() {
               providers.map((p) => (
                 <div
                   key={p.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-elevated/60 px-3 py-2.5 text-xs"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-elevated/45 px-3.5 py-2.5 text-xs"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-ink">{p.name}</span>
-                      <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-ink-secondary border border-line">
+                      <span className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-[11px] text-ink-secondary border border-line">
                         {p.model_name}
                       </span>
                       {p.is_default && (
-                        <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] text-accent">
+                        <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent">
                           默认
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 text-[11px] text-ink-muted font-mono truncate">
+                    <div className="mt-1 text-[11px] text-ink-muted font-mono truncate">
                       {p.protocol} · {p.base_url} · {p.api_key_masked}
                     </div>
                   </div>
@@ -384,7 +408,7 @@ export function SettingsPage() {
                         setProbeResult(res);
                         await refreshProviders();
                       }}
-                      className="rounded border border-line bg-surface px-2 py-1 text-[11px] text-ink-secondary hover:text-ink"
+                      className="sl-btn h-8 rounded-lg border border-line bg-surface px-2.5 text-[11px] text-ink-secondary hover:text-ink"
                     >
                       自检
                     </button>
@@ -395,10 +419,10 @@ export function SettingsPage() {
                           await providersApi.update(p.id, { is_default: true });
                           await refreshProviders();
                         }}
-                        className="rounded border border-line bg-surface px-2 py-1 text-[11px] text-ink-secondary hover:text-ink"
+                        className="sl-btn inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-surface px-2.5 text-[11px] text-ink-secondary hover:text-ink"
                       >
-                        <Star className="inline h-3 w-3 mr-0.5" />
-                        设为默认
+                        <Star className="h-3 w-3" />
+                        <span>设为默认</span>
                       </button>
                     )}
                     <button
@@ -407,7 +431,7 @@ export function SettingsPage() {
                         await providersApi.delete(p.id);
                         await refreshProviders();
                       }}
-                      className="rounded p-1 text-ink-muted hover:text-danger"
+                      className="sl-btn inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:text-danger"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -420,14 +444,14 @@ export function SettingsPage() {
 
         {/* Admin Panel */}
         {user?.role === "admin" && adminSettings && (
-          <section className="rounded-2xl border border-line bg-surface p-5 space-y-4">
+          <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 space-y-4">
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-accent" />
               <h2 className="text-sm font-semibold text-ink">管理员系统设置</h2>
             </div>
 
-            <form onSubmit={handleSaveAdmin} className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <label className="flex items-center gap-2 sm:col-span-3 text-ink">
+            <form onSubmit={handleSaveAdmin} className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs">
+              <label className="flex items-center gap-2 sm:col-span-3 text-ink cursor-pointer">
                 <input
                   type="checkbox"
                   checked={adminSettings.allow_registration}
@@ -439,19 +463,19 @@ export function SettingsPage() {
               </label>
 
               <div>
-                <label className="mb-1 block text-ink-secondary">注册邀请码（留空不限制）</label>
+                <label className="mb-1.5 block text-ink-secondary">注册邀请码（留空不限制）</label>
                 <input
                   type="text"
                   value={adminSettings.invite_code}
                   onChange={(e) =>
                     setAdminSettings({ ...adminSettings, invite_code: e.target.value })
                   }
-                  className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-ink"
+                  className="h-9 w-full rounded-xl border border-line bg-elevated px-3 text-ink outline-none focus:border-accent"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-ink-secondary">单文件上传上限 (MB)</label>
+                <label className="mb-1.5 block text-ink-secondary">单文件上传上限 (MB)</label>
                 <input
                   type="number"
                   min={1}
@@ -463,56 +487,54 @@ export function SettingsPage() {
                       max_upload_mb: Number(e.target.value) || 100,
                     })
                   }
-                  className="w-full rounded-lg border border-line bg-elevated px-3 py-2 text-ink"
+                  className="sl-num h-9 w-full rounded-xl border border-line bg-elevated px-3 text-ink outline-none focus:border-accent"
                 />
               </div>
 
               <div className="flex items-end">
                 <button
                   type="submit"
-                  className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-fg"
+                  className="sl-btn h-9 rounded-xl bg-accent px-4 font-medium text-accent-fg"
                 >
                   保存全局设置
                 </button>
               </div>
             </form>
 
-            <div className="border-t border-line pt-3 space-y-1.5">
+            <div className="border-t border-line pt-4 space-y-1.5">
               <h3 className="text-xs font-semibold text-ink-secondary">用户管理</h3>
               {adminUsers.map((u) => (
                 <div
                   key={u.id}
-                  className="flex items-center justify-between rounded-lg border border-line bg-elevated/60 px-3 py-2 text-xs"
+                  className="flex items-center justify-between rounded-xl border border-line bg-elevated/45 px-3.5 py-2 text-xs"
                 >
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="font-medium text-ink">{u.username}</span>
-                    <span className="ml-2 rounded bg-surface px-1.5 py-0.5 text-[10px] border border-line text-ink-secondary">
+                    <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] border border-line text-ink-secondary">
                       {u.role}
                     </span>
                     {!u.is_active && (
-                      <span className="ml-2 text-[10px] text-danger">已停用</span>
+                      <span className="text-[11px] text-danger">已停用</span>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const updated = await authApi.updateUser(u.id, {
-                            is_active: !u.is_active,
-                          });
-                          setAdminUsers((prev) =>
-                            prev.map((item) => (item.id === u.id ? updated : item))
-                          );
-                        } catch (err) {
-                          setMsg(err instanceof Error ? err.message : "操作失败");
-                        }
-                      }}
-                      className="rounded border border-line bg-surface px-2 py-0.5 text-[11px] text-ink-secondary hover:text-ink"
-                    >
-                      {u.is_active ? "停用" : "启用"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const updated = await authApi.updateUser(u.id, {
+                          is_active: !u.is_active,
+                        });
+                        setAdminUsers((prev) =>
+                          prev.map((item) => (item.id === u.id ? updated : item))
+                        );
+                      } catch (err) {
+                        setMsg(err instanceof Error ? err.message : "操作失败");
+                      }
+                    }}
+                    className="sl-btn h-7 rounded-lg border border-line bg-surface px-2.5 text-[11px] text-ink-secondary hover:text-ink"
+                  >
+                    {u.is_active ? "停用" : "启用"}
+                  </button>
                 </div>
               ))}
             </div>

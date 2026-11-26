@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { BrandLogo } from "./components/common/BrandLogo";
 import { TopBar } from "./components/layout/TopBar";
 import { AuthPage } from "./pages/AuthPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -22,8 +23,9 @@ export function App() {
 
   if (initializing) {
     return (
-      <div className="flex h-full items-center justify-center bg-canvas text-xs text-ink-muted">
-        正在加载 ScrollLens...
+      <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 bg-canvas">
+        <BrandLogo size="lg" showWordmark />
+        <span className="text-xs text-ink-muted">正在加载工作台...</span>
       </div>
     );
   }
@@ -33,7 +35,7 @@ export function App() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-canvas text-ink">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-canvas text-ink">
       <TopBar />
       {activeView === "settings" ? <SettingsPage /> : <WorkspacePage />}
     </div>
