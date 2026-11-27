@@ -220,12 +220,28 @@ export interface ProviderTestResult {
   detail: string;
 }
 
+export interface SessionQuestionPreview {
+  message_id: number;
+  index: number;
+  question: string;
+  answer_preview: string;
+  citations_count: number;
+  created_at: string;
+}
+
 export interface ChatSession {
   id: number;
   user_id: number;
   mode: AppMode;
   target_id: number;
   title: string;
+  summary?: string;
+  summary_source?: "none" | "local" | "ai";
+  question_count?: number;
+  message_count?: number;
+  total_citations?: number;
+  last_question?: string;
+  questions?: SessionQuestionPreview[];
   created_at: string;
   updated_at: string;
 }

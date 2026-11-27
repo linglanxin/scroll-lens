@@ -1,11 +1,15 @@
 import { useRef, useState, type DragEvent } from "react";
 import {
+  ChevronDown,
+  ChevronRight,
   FilePlus2,
+  LayoutGrid,
   Lock,
   LogOut,
   MessageSquarePlus,
   Moon,
   Smartphone,
+  Sparkles,
   Sun,
   Trash2,
   Upload,
@@ -58,6 +62,8 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
   const {
     sessions,
     activeSessionId,
+    chatView,
+    openOverview,
     selectSession,
     newSession,
     deleteSession,
@@ -68,6 +74,7 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
   const docInputRef = useRef<HTMLInputElement>(null);
   const [appendTargetId, setAppendTargetId] = useState<number | null>(null);
   const [dragAppendBookId, setDragAppendBookId] = useState<number | null>(null);
+  const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null);
 
   const activeBook = books.find((b) => b.id === selectedBookId) ?? null;
 
@@ -402,52 +409,138 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
       )}
 
       {/* Sessions Header */}
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between gap-1 px-3 py-2">
         <span className="text-xs font-semibold text-ink-secondary">历史对话</span>
-        <button
-          type="button"
-          onClick={newSession}
-          className="sl-btn flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-accent hover:bg-accent-soft"
-        >
-          <MessageSquarePlus className="h-3.5 w-3.5" />
-          <span>新对话</span>
-        </button>
+        <div className="flex items-center gap-1">
+          {sessions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                openOverview();
+                setMobileSidebarOpen(false);
+              }}
+              className={`sl-btn flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium ${
+                chatView === "overview"
+                  ? "bg-hover text-ink"
+                  : "text-ink-secondary hover:bg-hover hover:text-ink"
+              }`}
+              title="查看历史对话总结总览"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span>总览</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              newSession();
+              setMobileSidebarOpen(false);
+            }}
+            className="sl-btn flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-accent hover:bg-accent-soft"
+          >
+            <MessageSquarePlus className="h-3.5 w-3.5" />
+            <span>新对话</span>
+          </button>
+        </div>
       </div>
 
       {/* Sessions List */}
-      <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
         {sessions.length === 0 ? (
           <p className="px-2 py-5 text-center text-xs text-ink-muted">暂无历史会话</p>
         ) : (
           sessions.map((sess) => {
-            const active = sess.id === activeSessionId;
+            const active = chatView === "chat" && sess.id === activeSessionId;
+            const questions = sess.questions ?? [];
+            const qCount = sess.question_count ?? questions.length;
+            const isExpanded = expandedSessionId === sess.id;
+            const headline = sess.summary || sess.title;
             return (
               <div
                 key={sess.id}
-                onClick={() => {
-                  void selectSession(sess.id);
-                  setMobileSidebarOpen(false);
-                }}
-                className={`group flex cursor-pointer items-center justify-between rounded-xl px-2.5 py-2 text-xs transition ${
+                className={`rounded-xl transition ${
                   active
-                    ? "bg-hover font-medium text-ink"
+                    ? "bg-hover text-ink"
                     : "text-ink-secondary hover:bg-elevated hover:text-ink"
                 }`}
               >
-                <span className="truncate">{sess.title}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`确定删除会话「${sess.title}」吗？`)) {
-                      void deleteSession(sess.id);
-                    }
+                <div
+                  onClick={() => {
+                    void selectSession(sess.id);
+                    setMobileSidebarOpen(false);
                   }}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 rounded-lg text-ink-muted hover:text-danger transition-opacity"
-                  aria-label="删除会话"
+                  className="group flex cursor-pointer items-start justify-between gap-1 px-2.5 py-2 text-xs"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className={`line-clamp-2 leading-snug ${
+                        active ? "font-medium text-ink" : ""
+                      }`}
+                    >
+                      {headline}
+                    </div>
+                    <div className="sl-num mt-1 flex items-center gap-1.5 text-[10px] text-ink-muted">
+                      {sess.summary_source === "ai" && (
+                        <Sparkles className="h-2.5 w-2.5 shrink-0 text-accent" />
+                      )}
+                      <span>{qCount} 问</span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center">
+                    {questions.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedSessionId(isExpanded ? null : sess.id);
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-ink-muted hover:bg-surface hover:text-ink"
+                        title={isExpanded ? "收起问题" : "展开问题"}
+                        aria-label={isExpanded ? "收起问题" : "展开问题"}
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-3.5 w-3.5 text-accent" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`确定删除会话「${headline}」吗？`)) {
+                          void deleteSession(sess.id);
+                        }
+                      }}
+                      className="inline-flex h-7 w-7 items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 rounded-lg text-ink-muted hover:text-danger transition-opacity"
+                      aria-label="删除会话"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {isExpanded && questions.length > 1 && (
+                  <div className="mx-2 mb-2 space-y-0.5 border-l border-line-strong pl-2">
+                    {questions.map((q) => (
+                      <button
+                        key={q.message_id}
+                        type="button"
+                        onClick={() => {
+                          void selectSession(sess.id, q.message_id);
+                          setMobileSidebarOpen(false);
+                        }}
+                        className="flex w-full items-start gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11px] text-ink-secondary hover:bg-surface hover:text-accent"
+                      >
+                        <span className="sl-num shrink-0 font-semibold text-accent">
+                          Q{q.index}
+                        </span>
+                        <span className="truncate">{q.question}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })

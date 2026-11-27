@@ -8,9 +8,16 @@ import type {
   ToolTraceItem,
 } from "../types/api";
 
+export type ChatViewMode = "overview" | "chat";
+
 interface ChatState {
   sessions: ChatSession[];
   activeSessionId: number | null;
+  chatView: ChatViewMode;
+  loadingSessions: boolean;
+  loadedTargetKey: string | null;
+  focusMessageId: number | null;
+  summarizingIds: Record<number, boolean>;
   messages: ChatMessage[];
   isStreaming: boolean;
   streamingText: string;
@@ -20,8 +27,16 @@ interface ChatState {
   abortController: AbortController | null;
 
   loadSessions: (mode: AppMode, targetId: number | null) => Promise<void>;
-  selectSession: (sessionId: number) => Promise<void>;
+  openOverview: () => void;
+  selectSession: (sessionId: number, focusMessageId?: number | null) => Promise<void>;
+  clearFocusMessage: () => void;
   newSession: () => void;
+  renameSession: (sessionId: number, title: string) => Promise<void>;
+  summarizeSession: (
+    sessionId: number,
+    providerId?: number | null,
+    options?: { silent?: boolean }
+  ) => Promise<void>;
   deleteSession: (sessionId: number) => Promise<void>;
   sendMessage: (params: {
     mode: AppMode;
@@ -37,6 +52,11 @@ interface ChatState {
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   activeSessionId: null,
+  chatView: "overview",
+  loadingSessions: false,
+  loadedTargetKey: null,
+  focusMessageId: null,
+  summarizingIds: {},
   messages: [],
   isStreaming: false,
   streamingText: "",
@@ -47,47 +67,145 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadSessions: async (mode, targetId) => {
     if (!targetId) {
-      set({ sessions: [], activeSessionId: null, messages: [] });
+      get().stopStreaming();
+      set({
+        sessions: [],
+        activeSessionId: null,
+        chatView: "chat",
+        loadingSessions: false,
+        loadedTargetKey: null,
+        focusMessageId: null,
+        messages: [],
+      });
       return;
     }
+
+    const nextKey = `${mode}:${targetId}`;
+    const targetChanged = get().loadedTargetKey !== nextKey;
+
+    if (targetChanged) {
+      get().stopStreaming();
+      set({
+        loadedTargetKey: nextKey,
+        loadingSessions: true,
+        sessions: [],
+        activeSessionId: null,
+        chatView: "overview",
+        focusMessageId: null,
+        messages: [],
+        error: null,
+      });
+    }
+
     try {
       const sessions = await chatApi.listSessions(mode, targetId);
-      const current = get().activeSessionId;
-      const stillValid = current && sessions.some((s) => s.id === current);
-      if (stillValid && current) {
-        set({ sessions });
+      // Guard against rapid book/doc switching while requests are in flight
+      if (get().loadedTargetKey !== nextKey) return;
+
+      if (targetChanged) {
+        set({
+          sessions,
+          activeSessionId: null,
+          chatView: sessions.length > 0 ? "overview" : "chat",
+          loadingSessions: false,
+          messages: [],
+        });
       } else {
-        const firstId = sessions[0]?.id ?? null;
-        set({ sessions, activeSessionId: firstId, messages: [] });
-        if (firstId) {
-          await get().selectSession(firstId);
-        }
+        const current = get().activeSessionId;
+        const stillValid = current !== null && sessions.some((s) => s.id === current);
+        set({
+          sessions,
+          loadingSessions: false,
+          ...(stillValid ? {} : { activeSessionId: null }),
+        });
       }
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : "加载对话历史失败" });
+      if (get().loadedTargetKey !== nextKey) return;
+      set({
+        loadingSessions: false,
+        chatView: "chat",
+        error: err instanceof Error ? err.message : "加载对话历史失败",
+      });
     }
   },
 
-  selectSession: async (sessionId) => {
-    set({ activeSessionId: sessionId, error: null });
+  openOverview: () => {
+    get().stopStreaming();
+    set({
+      chatView: "overview",
+      focusMessageId: null,
+      error: null,
+    });
+  },
+
+  selectSession: async (sessionId, focusMessageId) => {
+    get().stopStreaming();
+    const switchingSession = get().activeSessionId !== sessionId;
+    set({
+      activeSessionId: sessionId,
+      chatView: "chat",
+      focusMessageId: focusMessageId ?? null,
+      error: null,
+      ...(switchingSession ? { messages: [] } : {}),
+    });
     try {
       const messages = await chatApi.listMessages(sessionId);
-      set({ messages });
+      if (get().activeSessionId === sessionId) {
+        set({ messages });
+      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "加载消息失败" });
     }
   },
 
+  clearFocusMessage: () => set({ focusMessageId: null }),
+
   newSession: () => {
     get().stopStreaming();
     set({
       activeSessionId: null,
+      chatView: "chat",
+      focusMessageId: null,
       messages: [],
       streamingText: "",
       streamingTools: [],
       streamingCitations: [],
       error: null,
     });
+  },
+
+  renameSession: async (sessionId, title) => {
+    try {
+      const updated = await chatApi.renameSession(sessionId, title);
+      set((s) => ({
+        sessions: s.sessions.map((item) => (item.id === sessionId ? updated : item)),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : "重命名会话失败" });
+    }
+  },
+
+  summarizeSession: async (sessionId, providerId, options) => {
+    if (get().summarizingIds[sessionId]) return;
+    set((s) => ({
+      summarizingIds: { ...s.summarizingIds, [sessionId]: true },
+    }));
+    try {
+      const updated = await chatApi.summarizeSession(sessionId, providerId);
+      set((s) => ({
+        sessions: s.sessions.map((item) => (item.id === sessionId ? updated : item)),
+      }));
+    } catch (err) {
+      if (!options?.silent) {
+        set({ error: err instanceof Error ? err.message : "生成 AI 总结失败" });
+      }
+    } finally {
+      set((s) => {
+        const next = { ...s.summarizingIds };
+        delete next[sessionId];
+        return { summarizingIds: next };
+      });
+    }
   },
 
   deleteSession: async (sessionId) => {
@@ -97,12 +215,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const wasActive = get().activeSessionId === sessionId;
       set({
         sessions: remaining,
-        activeSessionId: wasActive ? (remaining[0]?.id ?? null) : get().activeSessionId,
+        activeSessionId: wasActive ? null : get().activeSessionId,
         messages: wasActive ? [] : get().messages,
+        chatView: wasActive
+          ? remaining.length > 0
+            ? "overview"
+            : "chat"
+          : remaining.length === 0
+            ? "chat"
+            : get().chatView,
       });
-      if (wasActive && remaining[0]) {
-        await get().selectSession(remaining[0].id);
-      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "删除会话失败" });
     }
@@ -132,6 +254,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
 
     set((s) => ({
+      chatView: "chat",
+      focusMessageId: null,
       messages: [...s.messages, optimisticUserMsg],
       isStreaming: true,
       streamingText: "",
@@ -201,9 +325,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
           chatApi.listSessions(mode, targetId),
           chatApi.listMessages(resolvedSessionId),
         ]);
+        const targetKey = `${mode}:${targetId}`;
+        if (get().loadedTargetKey !== targetKey) {
+          set({ isStreaming: false, abortController: null });
+          return;
+        }
         set({
           sessions,
           activeSessionId: resolvedSessionId,
+          chatView: "chat",
           messages,
           isStreaming: false,
           streamingText: "",
@@ -211,6 +341,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
           streamingCitations: [],
           abortController: null,
         });
+
+        const updatedSess = sessions.find((s) => s.id === resolvedSessionId);
+        const qCount = updatedSess?.question_count ?? 0;
+        if (
+          updatedSess &&
+          qCount >= 2 &&
+          (updatedSess.summary_source !== "ai" || qCount % 3 === 0)
+        ) {
+          void get().summarizeSession(resolvedSessionId, providerId, { silent: true });
+        }
       } else {
         set({ isStreaming: false, abortController: null });
       }

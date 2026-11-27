@@ -155,6 +155,8 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     mode TEXT NOT NULL CHECK (mode IN ('novel', 'document')),
     target_id INTEGER NOT NULL,
     title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    summary_source TEXT NOT NULL DEFAULT 'none' CHECK (summary_source IN ('none', 'local', 'ai')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -212,6 +214,17 @@ class Database:
             if "cover_path" not in book_cols:
                 conn.execute(
                     "ALTER TABLE books ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''"
+                )
+            session_cols = {
+                r["name"] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()
+            }
+            if "summary" not in session_cols:
+                conn.execute(
+                    "ALTER TABLE chat_sessions ADD COLUMN summary TEXT NOT NULL DEFAULT ''"
+                )
+            if "summary_source" not in session_cols:
+                conn.execute(
+                    "ALTER TABLE chat_sessions ADD COLUMN summary_source TEXT NOT NULL DEFAULT 'none'"
                 )
             defaults = {
                 "allow_registration": "true" if settings.allow_registration else "false",

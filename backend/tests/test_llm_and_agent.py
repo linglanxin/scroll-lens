@@ -367,3 +367,103 @@ def test_health_openapi_and_document_sse_chat(app_client, monkeypatch: pytest.Mo
     msgs = client.get(f"/api/v1/chat/sessions/{sessions[0]['id']}/messages", headers=hdr).json()
     assert len(msgs) == 2
     assert msgs[1]["citations"][0]["page_num"] == 1
+
+
+def test_session_history_overview_questions_and_ai_summarize(
+    app_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _ = app_client
+
+    reg_a = client.post("/api/v1/auth/register", json={"username": "alice", "password": "password123"}).json()
+    hdr_a = {"Authorization": f"Bearer {reg_a['access_token']}"}
+    reg_b = client.post("/api/v1/auth/register", json={"username": "bob", "password": "password123"}).json()
+    hdr_b = {"Authorization": f"Bearer {reg_b['access_token']}"}
+
+    doc_id = client.post(
+        "/api/v1/docs",
+        headers=hdr_a,
+        files={"file": ("arch.md", b"# Architecture\nSQLite FTS5 powers zero-cost search on page 1.", "text/markdown")},
+    ).json()["id"]
+    prov_id = client.post(
+        "/api/v1/providers",
+        headers=hdr_a,
+        json={
+            "name": "Mock",
+            "protocol": "openai_compat",
+            "base_url": "https://mock.local/v1",
+            "api_key": "sk-mock",
+            "model_name": "mock-model",
+        },
+    ).json()["id"]
+
+    scripted_chat = _ScriptedAdapter(
+        [
+            [StreamEvent(type="text_delta", text="检索引擎是 SQLite FTS5 [p:1]。"), StreamEvent(type="done")],
+            [StreamEvent(type="text_delta", text="索引零额外成本 [p:1]。"), StreamEvent(type="done")],
+        ]
+    )
+    monkeypatch.setattr("app.api.chat.create_adapter", lambda **kwargs: scripted_chat)
+
+    with client.stream(
+        "POST",
+        "/api/v1/chat/stream",
+        headers=hdr_a,
+        json={"mode": "document", "target_id": doc_id, "provider_id": prov_id, "message": "核心检索技术是什么？"},
+    ) as resp1:
+        assert resp1.status_code == 200
+        _ = resp1.read()
+
+    sessions_after_q1 = client.get(f"/api/v1/chat/sessions?mode=document&target_id={doc_id}", headers=hdr_a).json()
+    sid = sessions_after_q1[0]["id"]
+
+    with client.stream(
+        "POST",
+        "/api/v1/chat/stream",
+        headers=hdr_a,
+        json={
+            "mode": "document",
+            "target_id": doc_id,
+            "session_id": sid,
+            "provider_id": prov_id,
+            "message": "索引成本高吗？",
+        },
+    ) as resp2:
+        assert resp2.status_code == 200
+        _ = resp2.read()
+
+    sessions = client.get(f"/api/v1/chat/sessions?mode=document&target_id={doc_id}", headers=hdr_a).json()
+    assert len(sessions) == 1
+    s = sessions[0]
+    assert s["title"] == "核心检索技术是什么？"
+    assert s["summary_source"] == "local"
+    assert "2 个问题" in s["summary"]
+    assert s["question_count"] == 2
+    assert s["total_citations"] == 2
+    assert [q["index"] for q in s["questions"]] == [1, 2]
+    assert s["questions"][0]["question"] == "核心检索技术是什么？"
+    assert s["questions"][1]["question"] == "索引成本高吗？"
+    assert "SQLite FTS5" in s["questions"][0]["answer_preview"]
+    assert s["questions"][0]["message_id"] < s["questions"][1]["message_id"]
+
+    sum_adapter = _ScriptedAdapter(
+        [[StreamEvent(type="text_delta", text="「总结：讨论文档使用的 SQLite FTS5 检索技术及零成本索引特性」"), StreamEvent(type="done")]]
+    )
+    monkeypatch.setattr("app.api.chat.create_adapter", lambda **kwargs: sum_adapter)
+
+    sum_resp = client.post(
+        f"/api/v1/chat/sessions/{sid}/summarize",
+        headers=hdr_a,
+        json={"provider_id": prov_id},
+    )
+    assert sum_resp.status_code == 200
+    summarized = sum_resp.json()
+    assert summarized["summary_source"] == "ai"
+    assert summarized["summary"] == "讨论文档使用的 SQLite FTS5 检索技术及零成本索引特性"
+
+    sessions_reloaded = client.get(f"/api/v1/chat/sessions?mode=document&target_id={doc_id}", headers=hdr_a).json()
+    assert sessions_reloaded[0]["summary_source"] == "ai"
+    assert sessions_reloaded[0]["summary"] == "讨论文档使用的 SQLite FTS5 检索技术及零成本索引特性"
+
+    # Cross-user access must be rejected
+    forbidden = client.post(f"/api/v1/chat/sessions/{sid}/summarize", headers=hdr_b, json={})
+    assert forbidden.status_code == 404

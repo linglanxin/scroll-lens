@@ -24,6 +24,12 @@ export const chatApi = {
       body: JSON.stringify({ title }),
     }),
 
+  summarizeSession: (sessionId: number, providerId?: number | null) =>
+    apiFetch<ChatSession>(`/api/v1/chat/sessions/${sessionId}/summarize`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId ?? null }),
+    }),
+
   deleteSession: (sessionId: number) =>
     apiFetch<{ deleted: boolean; session_id: number }>(
       `/api/v1/chat/sessions/${sessionId}`,
