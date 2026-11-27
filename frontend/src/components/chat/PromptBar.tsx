@@ -165,6 +165,20 @@ export function PromptBar({
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [spoilerOpen]);
 
+  useEffect(() => {
+    function handleAndroidBack(e: Event) {
+      if (spoilerOpen) {
+        e.preventDefault();
+        setSpoilerOpen(false);
+      } else if (slashOpen) {
+        e.preventDefault();
+        setSlashOpen(false);
+      }
+    }
+    window.addEventListener("scrolllens:back", handleAndroidBack);
+    return () => window.removeEventListener("scrolllens:back", handleAndroidBack);
+  }, [spoilerOpen, slashOpen]);
+
   function applyCommand(item: SlashTemplate) {
     setDraft(item.prompt);
     setSlashOpen(false);

@@ -292,5 +292,6 @@ declare global {
       getServerUrl?: () => string;
       getAppVersion?: () => string;
     };
+    __scrollLensHandleBack?: () => boolean;
   }
 }

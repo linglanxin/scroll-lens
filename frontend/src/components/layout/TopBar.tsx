@@ -27,13 +27,13 @@ export function TopBar() {
   const { user, logout } = useAuthStore();
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-line bg-surface px-2.5 sm:px-4 gap-2">
-      <div className="flex items-center gap-2 min-w-0">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-line bg-surface px-2 sm:px-4 gap-1.5 sm:gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
         {activeView === "workspace" && (
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(true)}
-            className="sl-btn inline-flex h-10 w-10 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-ink md:hidden"
+            className="sl-btn inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-ink md:hidden"
             title="打开资料与会话抽屉"
             aria-label="打开侧边栏"
           >
@@ -44,47 +44,48 @@ export function TopBar() {
         <button
           type="button"
           onClick={() => setActiveView("workspace")}
-          className="sl-btn flex items-center rounded-xl px-1.5 py-1 hover:bg-hover"
+          className="sl-btn flex shrink-0 items-center rounded-xl px-1 sm:px-1.5 py-1 hover:bg-hover"
+          aria-label="ScrollLens 卷镜"
         >
-          <BrandLogo size="sm" showWordmark />
+          <BrandLogo size="sm" showWordmark compactMobile />
         </button>
 
         {activeView === "workspace" && (
-          <div className="ml-1 flex items-center rounded-xl border border-line bg-elevated p-0.5 text-xs">
+          <div className="ml-0.5 sm:ml-1 flex shrink-0 items-center rounded-xl border border-line bg-elevated p-0.5 text-xs">
             <button
               type="button"
               onClick={() => setMode("novel")}
-              className={`sl-btn flex h-7 items-center gap-1.5 rounded-lg px-2.5 font-medium ${
+              className={`sl-btn flex h-8 sm:h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 font-medium ${
                 mode === "novel"
                   ? "bg-surface text-ink shadow-sm"
                   : "text-ink-secondary hover:text-ink"
               }`}
             >
-              <BookOpen className="h-3.5 w-3.5" />
+              <BookOpen className="h-3.5 w-3.5 shrink-0" />
               <span>网文</span>
             </button>
             <button
               type="button"
               onClick={() => setMode("document")}
-              className={`sl-btn flex h-7 items-center gap-1.5 rounded-lg px-2.5 font-medium ${
+              className={`sl-btn flex h-8 sm:h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 font-medium ${
                 mode === "document"
                   ? "bg-surface text-ink shadow-sm"
                   : "text-ink-secondary hover:text-ink"
               }`}
             >
-              <FileText className="h-3.5 w-3.5" />
+              <FileText className="h-3.5 w-3.5 shrink-0" />
               <span>文档</span>
             </button>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         {activeView === "workspace" && (
           <button
             type="button"
             onClick={() => setRightPanelOpen(!rightPanelOpen)}
-            className={`sl-btn inline-flex h-9 w-9 items-center justify-center rounded-xl ${
+            className={`sl-btn inline-flex h-10 w-10 md:h-9 md:w-9 shrink-0 items-center justify-center rounded-xl ${
               rightPanelOpen
                 ? "bg-accent-soft text-accent"
                 : "text-ink-secondary hover:bg-hover hover:text-ink"
@@ -99,7 +100,7 @@ export function TopBar() {
         <button
           type="button"
           onClick={toggleTheme}
-          className="sl-btn inline-flex h-9 w-9 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-ink"
+          className="sl-btn hidden md:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-ink"
           title={theme === "light" ? "切换夜读深色主题" : "切换纸墨浅色主题"}
           aria-label="切换主题"
         >
@@ -111,21 +112,22 @@ export function TopBar() {
           onClick={() =>
             setActiveView(activeView === "settings" ? "workspace" : "settings")
           }
-          className={`sl-btn inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium ${
+          className={`sl-btn inline-flex h-10 w-10 md:h-9 md:w-auto shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl md:px-2.5 text-xs font-medium ${
             activeView === "settings"
               ? "bg-accent text-accent-fg"
               : "text-ink-secondary hover:bg-hover hover:text-ink"
           }`}
           title="模型与系统设置"
+          aria-label="模型与系统设置"
         >
-          <Settings className="h-4 w-4" />
-          <span className="hidden sm:inline">设置</span>
+          <Settings className="h-4 w-4 shrink-0" />
+          <span className="hidden md:inline">设置</span>
         </button>
 
         <button
           type="button"
           onClick={logout}
-          className="sl-btn inline-flex h-9 w-9 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-danger"
+          className="sl-btn hidden md:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-danger"
           title={`退出登录 (${user?.username ?? ""})`}
           aria-label="退出登录"
         >

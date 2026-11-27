@@ -2,12 +2,17 @@ import { useRef, useState, type DragEvent } from "react";
 import {
   FilePlus2,
   Lock,
+  LogOut,
   MessageSquarePlus,
+  Moon,
+  Smartphone,
+  Sun,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
+import { useAuthStore } from "../../stores/authStore";
 import { useChatStore } from "../../stores/chatStore";
 import {
   DOC_ACCEPT,
@@ -44,7 +49,11 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
     deleteDoc,
     uploading,
     setMobileSidebarOpen,
+    theme,
+    toggleTheme,
   } = useAppStore();
+  const { user, logout } = useAuthStore();
+  const hasAndroidBridge = Boolean(window.ScrollLensApp?.openServerConfig);
 
   const {
     sessions,
@@ -433,6 +442,45 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
             );
           })
         )}
+      </div>
+
+      {/* Mobile Drawer Footer Utilities (Theme / Server / Logout) */}
+      <div className="flex items-center justify-between gap-1.5 border-t border-line bg-elevated/50 px-2.5 pt-2 sl-pb-safe md:hidden">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="sl-btn flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-2 text-xs font-medium text-ink-secondary hover:text-ink"
+          aria-label="切换主题"
+        >
+          {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          <span>{theme === "light" ? "夜读" : "浅色"}</span>
+        </button>
+
+        {hasAndroidBridge && (
+          <button
+            type="button"
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              window.ScrollLensApp?.openServerConfig();
+            }}
+            className="sl-btn flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-2 text-xs font-medium text-ink-secondary hover:text-ink"
+            aria-label="切换服务器"
+          >
+            <Smartphone className="h-4 w-4" />
+            <span>服务器</span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={logout}
+          className="sl-btn flex h-10 items-center justify-center gap-1 rounded-xl border border-line bg-surface px-3 text-xs font-medium text-ink-secondary hover:text-danger"
+          title={`退出登录 (${user?.username ?? ""})`}
+          aria-label="退出登录"
+        >
+          <LogOut className="h-4 w-4" />
+          <span>退出</span>
+        </button>
       </div>
     </aside>
   );

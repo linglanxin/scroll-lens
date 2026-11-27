@@ -23,6 +23,10 @@ function loadInitialTheme(): ThemeMode {
   return theme;
 }
 
+function getInitialRightPanelOpen(): boolean {
+  return typeof window !== "undefined" ? window.innerWidth >= 1024 : false;
+}
+
 interface AppState {
   mode: AppMode;
   activeView: ActiveView;
@@ -75,7 +79,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeView: "workspace",
   theme: loadInitialTheme(),
   mobileSidebarOpen: false,
-  rightPanelOpen: true,
+  rightPanelOpen: getInitialRightPanelOpen(),
   rightPanelTab: "volumes",
 
   books: [],

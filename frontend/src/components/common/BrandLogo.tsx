@@ -1,6 +1,7 @@
 interface BrandLogoProps {
   size?: "sm" | "md" | "lg";
   showWordmark?: boolean;
+  compactMobile?: boolean;
   subtitle?: string;
 }
 
@@ -13,6 +14,7 @@ const SIZE_MAP = {
 export function BrandLogo({
   size = "sm",
   showWordmark = false,
+  compactMobile = false,
   subtitle,
 }: BrandLogoProps) {
   return (
@@ -41,8 +43,12 @@ export function BrandLogo({
         </svg>
       </span>
       {showWordmark && (
-        <div className="min-w-0 leading-tight">
-          <div className="flex items-baseline gap-1.5">
+        <div
+          className={`min-w-0 leading-tight whitespace-nowrap ${
+            compactMobile ? "hidden sm:block" : ""
+          }`}
+        >
+          <div className="flex items-baseline gap-1.5 whitespace-nowrap">
             <span className="font-semibold tracking-tight text-ink text-sm sm:text-[15px]">
               ScrollLens
             </span>

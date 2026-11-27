@@ -21,6 +21,33 @@ export function App() {
     }
   }, [user, loadAll]);
 
+  useEffect(() => {
+    window.__scrollLensHandleBack = () => {
+      const ev = new CustomEvent("scrolllens:back", { cancelable: true });
+      window.dispatchEvent(ev);
+      if (ev.defaultPrevented) {
+        return true;
+      }
+      const state = useAppStore.getState();
+      if (state.mobileSidebarOpen) {
+        state.setMobileSidebarOpen(false);
+        return true;
+      }
+      if (state.rightPanelOpen && window.innerWidth < 1024) {
+        state.setRightPanelOpen(false);
+        return true;
+      }
+      if (state.activeView === "settings") {
+        state.setActiveView("workspace");
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete window.__scrollLensHandleBack;
+    };
+  }, []);
+
   if (initializing) {
     return (
       <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 bg-canvas">

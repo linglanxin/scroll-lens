@@ -19,13 +19,11 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var serverStore: ServerStore
-    private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private lateinit var errorOverlay: LinearLayout
@@ -36,6 +34,19 @@ class MainActivity : AppCompatActivity() {
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var loadedServerUrl: String? = null
     private var lastBackPressedMs: Long = 0L
+    private var launchingServerConfig: Boolean = false
+
+    private val serverConfigLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        launchingServerConfig = false
+        val active = serverStore.getActiveServer()
+        if (active == null) {
+            finish()
+        } else if (loadedServerUrl != active.url) {
+            loadServer(active.url)
+        }
+    }
 
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -66,7 +77,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         serverStore = ServerStore(this)
-        swipeRefresh = findViewById(R.id.swipeRefresh)
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
         errorOverlay = findViewById(R.id.errorOverlay)
@@ -80,7 +90,7 @@ class MainActivity : AppCompatActivity() {
 
         val active = serverStore.getActiveServer()
         if (active == null) {
-            startActivity(Intent(this, ServerConfigActivity::class.java))
+            launchServerConfigOnce()
         } else {
             loadServer(active.url)
         }
@@ -90,7 +100,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         val active = serverStore.getActiveServer()
         if (active == null) {
-            startActivity(Intent(this, ServerConfigActivity::class.java))
+            launchServerConfigOnce()
             return
         }
         if (loadedServerUrl != active.url) {
@@ -98,8 +108,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun launchServerConfigOnce() {
+        if (launchingServerConfig) return
+        launchingServerConfig = true
+        serverConfigLauncher.launch(Intent(this, ServerConfigActivity::class.java))
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -120,7 +139,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                swipeRefresh.isRefreshing = false
                 progressBar.visibility = View.GONE
             }
 
@@ -130,7 +148,6 @@ class MainActivity : AppCompatActivity() {
                 error: WebResourceError?
             ) {
                 if (request?.isForMainFrame == true) {
-                    swipeRefresh.isRefreshing = false
                     progressBar.visibility = View.GONE
                     val desc = error?.description?.toString()?.takeIf { it.isNotBlank() }
                         ?: getString(R.string.offline_desc)
@@ -177,9 +194,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureListeners() {
-        swipeRefresh.setOnRefreshListener {
-            webView.reload()
-        }
         btnRetry.setOnClickListener {
             errorOverlay.visibility = View.GONE
             val currentUrl = serverStore.getActiveServer()?.url
@@ -188,27 +202,34 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnSwitchServer.setOnClickListener {
-            startActivity(Intent(this, ServerConfigActivity::class.java))
+            launchServerConfigOnce()
         }
     }
 
     private fun registerBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (webView.canGoBack()) {
-                    webView.goBack()
-                    return
-                }
-                val now = System.currentTimeMillis()
-                if (now - lastBackPressedMs < 2000L) {
-                    finish()
-                } else {
-                    lastBackPressedMs = now
-                    Toast.makeText(
-                        this@MainActivity,
-                        R.string.back_press_exit_hint,
-                        Toast.LENGTH_SHORT
-                    ).show()
+                webView.evaluateJavascript(
+                    "(function(){ return Boolean(window.__scrollLensHandleBack && window.__scrollLensHandleBack()); })()"
+                ) { raw ->
+                    if (raw == "true") {
+                        return@evaluateJavascript
+                    }
+                    if (webView.canGoBack()) {
+                        webView.goBack()
+                        return@evaluateJavascript
+                    }
+                    val now = System.currentTimeMillis()
+                    if (now - lastBackPressedMs < 2000L) {
+                        finish()
+                    } else {
+                        lastBackPressedMs = now
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.back_press_exit_hint,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         })
