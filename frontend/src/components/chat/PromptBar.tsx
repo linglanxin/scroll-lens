@@ -241,7 +241,10 @@ export function PromptBar({
       {showSlashMenu && (
         <div className="sl-animate-pop absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-2xl border border-line-strong bg-surface shadow-lg">
           <div className="flex items-center justify-between border-b border-line px-3.5 py-2 text-[11px] text-ink-muted">
-            <span>快捷提问模板（↑↓ 选择，Enter 插入，Esc 关闭）</span>
+            <span>
+              快捷提问模板
+              <span className="hidden sm:inline">（↑↓ 选择，Enter 插入，Esc 关闭）</span>
+            </span>
             <span>{mode === "novel" ? "网文查证" : "文档分析"}</span>
           </div>
           <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5">
@@ -286,7 +289,7 @@ export function PromptBar({
                   <span className="truncate">{activeBook.title}</span>
                 </span>
 
-                <div ref={spoilerPopoverRef} className="relative">
+                <div ref={spoilerPopoverRef} className="sm:relative">
                   <button
                     type="button"
                     onClick={() => setSpoilerOpen(!spoilerOpen)}
@@ -300,7 +303,7 @@ export function PromptBar({
                   </button>
 
                   {spoilerOpen && (
-                    <div className="sl-animate-pop absolute bottom-full left-0 z-30 mb-2 w-72 rounded-2xl border border-line-strong bg-surface p-3.5 shadow-lg">
+                    <div className="sl-animate-pop absolute bottom-full inset-x-2 sm:inset-x-auto sm:left-0 z-30 mb-2 sm:w-72 rounded-2xl border border-line-strong bg-surface p-3.5 shadow-lg">
                       <div className="flex items-center justify-between text-xs font-semibold text-ink">
                         <span>防剧透进度锁</span>
                         <span className="sl-num text-[11px] font-normal text-ink-muted">
@@ -433,7 +436,7 @@ export function PromptBar({
             </button>
 
             {/* Compact Model Selector inside PromptBar */}
-            <div className="inline-flex items-center gap-1 rounded-lg border border-line bg-elevated/80 px-2 h-8 max-w-[160px] sm:max-w-[230px]">
+            <div className="inline-flex flex-1 sm:flex-initial items-center gap-1 rounded-lg border border-line bg-elevated/80 px-2 h-9 sm:h-8 min-w-0 max-w-[230px] sm:max-w-[250px]">
               <Cpu className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
               {providers.length === 0 ? (
                 <button

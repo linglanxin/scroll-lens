@@ -25,4 +25,11 @@ class ScrollLensBridge(
     fun getAppVersion(): String {
         return BuildConfig.VERSION_NAME
     }
+
+    @JavascriptInterface
+    fun setSystemTheme(isDark: Boolean) {
+        activity.runOnUiThread {
+            (activity as? MainActivity)?.applySystemBarTheme(isDark)
+        }
+    }
 }

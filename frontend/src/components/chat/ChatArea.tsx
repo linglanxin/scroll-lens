@@ -292,9 +292,19 @@ export function ChatArea() {
           {mode === "novel" ? "导入小说，开始防剧透深度查证" : "上传日常文档，随时精准溯源"}
         </h1>
         <p className="mt-1.5 max-w-md text-xs leading-relaxed text-ink-secondary">
-          {mode === "novel"
-            ? "点击下方按钮，或直接将本地小说文件拖拽到窗口任意位置导入。系统会自动还原原书分卷并零成本建立本地全文索引。"
-            : "点击下方按钮，或直接将本地文档拖拽到窗口中上传。四万字内全文无损直读，超长文档自动切换分页检索。"}
+          {mode === "novel" ? (
+            <>
+              点击下方按钮
+              <span className="hidden md:inline">，或直接将本地小说文件拖拽到窗口任意位置</span>
+              导入。系统会自动还原原书分卷并零成本建立本地全文索引。
+            </>
+          ) : (
+            <>
+              点击下方按钮
+              <span className="hidden md:inline">，或直接将本地文档拖拽到窗口中</span>
+              上传。四万字内全文无损直读，超长文档自动切换分页检索。
+            </>
+          )}
         </p>
 
         <div className="mt-4 flex max-w-md flex-wrap justify-center gap-1.5">
@@ -313,11 +323,23 @@ export function ChatArea() {
             type="button"
             disabled={uploading}
             onClick={() => emptyUploadRef.current?.click()}
-            className="sl-btn inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-medium text-accent-fg disabled:opacity-50"
+            className="sl-btn inline-flex h-10 items-center gap-1.5 rounded-xl bg-accent px-4 text-xs font-medium text-accent-fg disabled:opacity-50"
           >
             <Upload className="h-3.5 w-3.5" />
             <span>
-              {uploading ? "解析入库中..." : mode === "novel" ? "选择或拖拽导入小说" : "选择或拖拽上传文档"}
+              {uploading ? (
+                "解析入库中..."
+              ) : mode === "novel" ? (
+                <>
+                  <span className="md:hidden">选择小说导入</span>
+                  <span className="hidden md:inline">选择或拖拽导入小说</span>
+                </>
+              ) : (
+                <>
+                  <span className="md:hidden">选择文档上传</span>
+                  <span className="hidden md:inline">选择或拖拽上传文档</span>
+                </>
+              )}
             </span>
           </button>
 
@@ -481,7 +503,7 @@ export function ChatArea() {
       )}
 
       {/* Floating React Bits-inspired PromptBar */}
-      <div className="px-3 sm:px-6 pt-1 sl-pb-safe shrink-0 bg-canvas">
+      <div className="px-3 sm:px-6 pt-1 pb-[max(1rem,calc(0.75rem+env(safe-area-inset-bottom)))] shrink-0 bg-canvas">
         <PromptBar
           activeBook={activeBook}
           activeDoc={activeDoc}

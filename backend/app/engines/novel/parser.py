@@ -77,6 +77,8 @@ class ParsedBook:
     title: str
     author: str = ""
     volumes: list[ParsedVolume] = field(default_factory=list)
+    cover_bytes: bytes | None = None
+    cover_ext: str = ""
 
 
 def decode_text_bytes(raw: bytes) -> str:
@@ -258,6 +260,53 @@ def _extract_fragment_texts(
     return {k: clean_novel_text("\n".join(v)) for k, v in result.items()}
 
 
+def _normalize_image_ext(media_type: str = "", filename: str = "") -> str:
+    mt = (media_type or "").lower()
+    fn = (filename or "").lower()
+    if "png" in mt or fn.endswith(".png"):
+        return ".png"
+    if "webp" in mt or fn.endswith(".webp"):
+        return ".webp"
+    if "jpeg" in mt or "jpg" in mt or fn.endswith((".jpg", ".jpeg")):
+        return ".jpg"
+    return ".jpg"
+
+
+def _extract_epub_cover(book, items_by_id: dict) -> tuple[bytes | None, str]:
+    from ebooklib import ITEM_COVER, ITEM_IMAGE
+
+    candidates = []
+    # 1. Explicit EPUB3 cover item
+    for item in book.get_items_of_type(ITEM_COVER):
+        candidates.append(item)
+    # 2. EPUB2 OPF <meta name="cover" content="id"/>
+    try:
+        for _, attrs in book.get_metadata("OPF", "cover") or []:
+            cid = (attrs or {}).get("content")
+            if cid and cid in items_by_id:
+                candidates.append(items_by_id[cid])
+    except Exception:
+        pass
+    # 3. Fallback: image item whose id or filename contains "cover"
+    for item in book.get_items_of_type(ITEM_IMAGE):
+        ident = f"{item.get_id() or ''} {item.get_name() or ''}".lower()
+        if "cover" in ident:
+            candidates.append(item)
+
+    for item in candidates:
+        try:
+            data = item.get_content()
+            if data and 256 <= len(data) <= 5 * 1024 * 1024:
+                ext = _normalize_image_ext(
+                    getattr(item, "media_type", "") or "",
+                    item.get_name() or "",
+                )
+                return data, ext
+        except Exception:
+            continue
+    return None, ""
+
+
 def parse_epub_novel(raw: bytes, fallback_title: str) -> ParsedBook:
     from ebooklib import ITEM_DOCUMENT, epub
 
@@ -280,6 +329,7 @@ def parse_epub_novel(raw: bytes, fallback_title: str) -> ParsedBook:
         doc_items: dict[str, bytes] = {}
         spine_docs: list[tuple[str, bytes]] = []
         items_by_id = {item.get_id(): item for item in book.get_items()}
+        cover_bytes, cover_ext = _extract_epub_cover(book, items_by_id)
 
         for item in book.get_items_of_type(ITEM_DOCUMENT):
             name = item.get_name().lstrip("./")
@@ -375,7 +425,13 @@ def parse_epub_novel(raw: bytes, fallback_title: str) -> ParsedBook:
                         ParsedVolume(volume_num=len(parsed_vols) + 1, title=v_title, chapters=chs)
                     )
             if parsed_vols:
-                return ParsedBook(title=book_title, author=author, volumes=parsed_vols)
+                return ParsedBook(
+                    title=book_title,
+                    author=author,
+                    volumes=parsed_vols,
+                    cover_bytes=cover_bytes,
+                    cover_ext=cover_ext,
+                )
 
         if flat_links:
             chs = []
@@ -399,12 +455,16 @@ def parse_epub_novel(raw: bytes, fallback_title: str) -> ParsedBook:
                     title=book_title,
                     author=author,
                     volumes=[ParsedVolume(volume_num=1, title="第一卷 正文", chapters=chs)],
+                    cover_bytes=cover_bytes,
+                    cover_ext=cover_ext,
                 )
 
         # Fallback to spine text parsed as TXT
         combined = "\n\n".join(_extract_html_text(content) for _, content in spine_docs)
         parsed = parse_txt_novel(combined.encode("utf-8"), book_title)
         parsed.author = author
+        parsed.cover_bytes = cover_bytes
+        parsed.cover_ext = cover_ext
         return parsed
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -662,6 +722,17 @@ def parse_pdf_novel(raw: bytes, fallback_title: str) -> ParsedBook:
                 "该 PDF 未检测到可提取的纯文本内容（可能为纯扫描图片版），暂不支持作为小说导入。"
             )
 
+        cover_bytes: bytes | None = None
+        cover_ext = ""
+        try:
+            if len(pdf) > 0:
+                pix = pdf[0].get_pixmap(matrix=pymupdf.Matrix(0.75, 0.75), alpha=False)
+                cover_bytes = pix.tobytes("jpeg")
+                cover_ext = ".jpg"
+        except Exception:
+            cover_bytes = None
+            cover_ext = ""
+
         num_pages = len(page_texts)
         toc_raw = pdf.get_toc(simple=True) or []
         valid_toc = [
@@ -730,11 +801,15 @@ def parse_pdf_novel(raw: bytes, fallback_title: str) -> ParsedBook:
 
             built = _build_parsed_book(book_title, pdf_author, raw_vols)
             if built.volumes:
+                built.cover_bytes = cover_bytes
+                built.cover_ext = cover_ext
                 return built
 
         combined = "\n".join(page_texts)
         parsed = parse_txt_novel(combined.encode("utf-8"), book_title)
         parsed.author = pdf_author
+        parsed.cover_bytes = cover_bytes
+        parsed.cover_ext = cover_ext
         return parsed
 
 

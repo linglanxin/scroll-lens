@@ -5,11 +5,15 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+import jwt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from app.config import Settings
-from app.core.deps import CurrentUser, get_app_settings, get_current_user, get_db
+from app.core.deps import CurrentUser, bearer_scheme, get_app_settings, get_current_user, get_db
+from app.core.security import decode_access_token
 from app.db.database import Database, get_system_settings_dict, utcnow_iso
 from app.engines.novel.indexer import (
     append_book_chapters,
@@ -31,6 +35,44 @@ def _require_owned_book(conn: sqlite3.Connection, book_id: int, user_id: int) ->
     if row is None:
         raise HTTPException(status_code=404, detail="Book not found")
     return row
+
+
+def _serialize_book(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    cover_path = str(data.pop("cover_path", "") or "")
+    has_cover = bool(cover_path)
+    data["has_cover"] = has_cover
+    data["cover_url"] = f"/api/v1/books/{data['id']}/cover" if has_cover else None
+    return data
+
+
+def _save_book_cover(
+    settings: Settings,
+    db: Database,
+    book_id: int,
+    cover_bytes: bytes | None,
+    cover_ext: str,
+) -> None:
+    if not cover_bytes:
+        return
+    ext = cover_ext if cover_ext in (".jpg", ".png", ".webp") else ".jpg"
+    covers_dir = settings.resolved_data_dir() / "covers"
+    covers_dir.mkdir(parents=True, exist_ok=True)
+    rel_name = f"book_{book_id}{ext}"
+    (covers_dir / rel_name).write_bytes(cover_bytes)
+    with db.session() as conn:
+        conn.execute("UPDATE books SET cover_path = ? WHERE id = ?", (rel_name, book_id))
+
+
+def _delete_book_cover_file(settings: Settings, cover_path: str) -> None:
+    if not cover_path:
+        return
+    try:
+        target = settings.resolved_data_dir() / "covers" / Path(cover_path).name
+        if target.exists():
+            target.unlink()
+    except OSError:
+        pass
 
 
 def _get_summarizer(request: Request) -> VolumeSummarizerManager:
@@ -120,11 +162,11 @@ def list_books(
     with db.session() as conn:
         rows = conn.execute(
             "SELECT id, title, author, total_volumes, total_chapters, total_chars, "
-            "read_progress_ch, created_at, updated_at FROM books "
+            "read_progress_ch, cover_path, created_at, updated_at FROM books "
             "WHERE user_id = ? ORDER BY updated_at DESC, id DESC",
             (current_user.id,),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [_serialize_book(r) for r in rows]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -134,6 +176,7 @@ def upload_book(
     author: Optional[str] = Form(default=None),
     current_user: CurrentUser = Depends(get_current_user),
     db: Database = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
 ) -> dict:
     filename, raw, max_bytes = _read_upload_with_limit(file, db)
     parsed = _parse_novel_bytes(
@@ -143,9 +186,45 @@ def upload_book(
         max_uncompressed_bytes=max(max_bytes * 3, 256 * 1024 * 1024),
     )
     book_id = ingest_book(db, current_user.id, parsed, author_override=author)
+    if parsed.cover_bytes:
+        _save_book_cover(settings, db, book_id, parsed.cover_bytes, parsed.cover_ext)
     with db.session() as conn:
         row = _require_owned_book(conn, book_id, current_user.id)
-    return dict(row)
+    return _serialize_book(row)
+
+
+@router.get("/{book_id}/cover")
+def get_book_cover(
+    book_id: int,
+    token: Optional[str] = Query(default=None),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Database = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
+):
+    raw_token = (credentials.credentials if credentials else None) or token
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication token")
+    try:
+        payload = decode_access_token(raw_token, settings.resolved_secret_key())
+        user_id = int(payload["sub"])
+    except (jwt.PyJWTError, KeyError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+    with db.session() as conn:
+        row = _require_owned_book(conn, book_id, user_id)
+        cover_path = str(row["cover_path"] or "")
+    if not cover_path:
+        raise HTTPException(status_code=404, detail="Cover not found")
+    file_path = settings.resolved_data_dir() / "covers" / Path(cover_path).name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Cover file missing")
+    media_map = {".png": "image/png", ".webp": "image/webp", ".jpg": "image/jpeg"}
+    media_type = media_map.get(file_path.suffix.lower(), "image/jpeg")
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.get("/{book_id}")
@@ -162,7 +241,7 @@ def get_book(
         wiki_cnt = conn.execute(
             "SELECT COUNT(*) FROM wiki_notes WHERE book_id = ?", (book_id,)
         ).fetchone()[0]
-    data = dict(row)
+    data = _serialize_book(row)
     data["alias_count"] = alias_cnt
     data["wiki_count"] = wiki_cnt
     return data
@@ -174,16 +253,19 @@ def delete_book(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Database = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
 ) -> dict:
     _get_summarizer(request).pause_book(book_id)
     with db.session() as conn:
-        _require_owned_book(conn, book_id, current_user.id)
+        row = _require_owned_book(conn, book_id, current_user.id)
+        cover_path = str(row["cover_path"] or "")
         db.drop_book_fts(conn, book_id)
         conn.execute(
             "DELETE FROM chat_sessions WHERE user_id = ? AND mode = 'novel' AND target_id = ?",
             (current_user.id, book_id),
         )
         conn.execute("DELETE FROM books WHERE id = ? AND user_id = ?", (book_id, current_user.id))
+    _delete_book_cover_file(settings, cover_path)
     return {"deleted": True, "book_id": book_id}
 
 
@@ -193,10 +275,12 @@ def append_book(
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(get_current_user),
     db: Database = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
 ) -> dict:
     with db.session() as conn:
         book = _require_owned_book(conn, book_id, current_user.id)
         existing_title = str(book["title"])
+        has_cover = bool(book["cover_path"])
 
     filename, raw, max_bytes = _read_upload_with_limit(file, db)
     parsed = _parse_novel_bytes(
@@ -206,9 +290,11 @@ def append_book(
         max_uncompressed_bytes=max(max_bytes * 3, 256 * 1024 * 1024),
     )
     result = append_book_chapters(db, book_id, parsed)
+    if not has_cover and parsed.cover_bytes:
+        _save_book_cover(settings, db, book_id, parsed.cover_bytes, parsed.cover_ext)
     with db.session() as conn:
         updated = _require_owned_book(conn, book_id, current_user.id)
-    return {**result, "book": dict(updated)}
+    return {**result, "book": _serialize_book(updated)}
 
 
 @router.patch("/{book_id}/settings")
@@ -232,7 +318,7 @@ def update_book_settings(
             (new_title, new_author, new_progress, utcnow_iso(), book_id),
         )
         updated = _require_owned_book(conn, book_id, current_user.id)
-    return dict(updated)
+    return _serialize_book(updated)
 
 
 @router.get("/{book_id}/volumes")

@@ -131,7 +131,7 @@ export function DocumentRightPanel() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-3.5">
+      <div className="flex-1 overflow-y-auto px-3.5 pt-3.5 pb-[max(2.25rem,calc(1.25rem+env(safe-area-inset-bottom)))]">
         {tab === "outline" ? (
           <div className="space-y-2">
             {(detail.has_scanned_pages || ocrRunning) && (

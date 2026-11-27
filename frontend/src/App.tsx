@@ -22,6 +22,9 @@ export function App() {
   }, [user, loadAll]);
 
   useEffect(() => {
+    const { theme } = useAppStore.getState();
+    window.ScrollLensApp?.setSystemTheme?.(theme === "dark");
+
     window.__scrollLensHandleBack = () => {
       const ev = new CustomEvent("scrolllens:back", { cancelable: true });
       window.dispatchEvent(ev);
@@ -39,6 +42,10 @@ export function App() {
       }
       if (state.activeView === "settings") {
         state.setActiveView("workspace");
+        return true;
+      }
+      if (window.innerWidth < 768 && state.mobileView === "workspace") {
+        state.setMobileView("shelf");
         return true;
       }
       return false;

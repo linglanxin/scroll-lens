@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS books (
     total_chapters INTEGER NOT NULL DEFAULT 0,
     total_chars INTEGER NOT NULL DEFAULT 0,
     read_progress_ch INTEGER NOT NULL DEFAULT 0,
+    cover_path TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -205,6 +206,13 @@ class Database:
     def init_schema(self, settings: Settings) -> None:
         with self.session() as conn:
             conn.executescript(SCHEMA_SQL)
+            book_cols = {
+                r["name"] for r in conn.execute("PRAGMA table_info(books)").fetchall()
+            }
+            if "cover_path" not in book_cols:
+                conn.execute(
+                    "ALTER TABLE books ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''"
+                )
             defaults = {
                 "allow_registration": "true" if settings.allow_registration else "false",
                 "invite_code": settings.invite_code,

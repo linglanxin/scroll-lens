@@ -37,6 +37,8 @@ export interface Book {
   total_chapters: number;
   total_chars: number;
   read_progress_ch: number;
+  has_cover?: boolean;
+  cover_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -291,6 +293,7 @@ declare global {
       openServerConfig: () => void;
       getServerUrl?: () => string;
       getAppVersion?: () => string;
+      setSystemTheme?: (isDark: boolean) => void;
     };
     __scrollLensHandleBack?: () => boolean;
   }

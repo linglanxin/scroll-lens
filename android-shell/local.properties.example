@@ -1,0 +1,5 @@
+# Copy this file to `local.properties` (gitignored) to bake your server URL into local APK builds.
+# When set, the APK automatically connects to this server on first launch and skips the server setup screen.
+#
+# defaultServerUrl=https://your-scrolllens-domain.example.com
+# defaultServerName=ScrollLens 服务器

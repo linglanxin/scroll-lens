@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { BookOpen, CheckCircle2, FileText, Loader2, Upload, X } from "lucide-react";
 import { LeftSidebar, type DropNotice } from "../components/layout/LeftSidebar";
 import { ChatArea } from "../components/chat/ChatArea";
+import { MobileBookshelf } from "../components/mobile/MobileBookshelf";
 import { NovelRightPanel } from "../components/novel/NovelRightPanel";
 import { DocumentRightPanel } from "../components/document/DocumentRightPanel";
 import {
@@ -25,6 +26,7 @@ export function WorkspacePage() {
     books,
     selectedBookId,
     selectedDocId,
+    mobileView,
     mobileSidebarOpen,
     setMobileSidebarOpen,
     rightPanelOpen,
@@ -213,8 +215,15 @@ export function WorkspacePage() {
         </div>
       )}
 
-      {/* Center Chat Stage */}
-      <main className="flex flex-1 flex-col min-w-0 min-h-0">
+      {/* Mobile Bookshelf Landing View (< md when mobileView === "shelf") */}
+      {mobileView === "shelf" && <MobileBookshelf />}
+
+      {/* Center Chat Stage (always visible on Desktop >= md; visible on Mobile when mobileView === "workspace") */}
+      <main
+        className={`${
+          mobileView === "shelf" ? "hidden md:flex" : "flex"
+        } flex-1 flex-col min-w-0 min-h-0`}
+      >
         {dropProgress && (
           <div className="flex items-center gap-2 border-b border-accent/30 bg-accent-soft/70 px-4 py-1.5 text-xs text-ink shrink-0">
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />

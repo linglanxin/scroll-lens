@@ -12,6 +12,7 @@ import type {
 
 export type RightPanelTab = "volumes" | "reader" | "aliases" | "wiki";
 export type ActiveView = "workspace" | "settings";
+export type MobileView = "shelf" | "workspace";
 export type ThemeMode = "light" | "dark";
 
 const THEME_KEY = "scroll_lens_theme";
@@ -20,6 +21,7 @@ function loadInitialTheme(): ThemeMode {
   const saved = localStorage.getItem(THEME_KEY);
   const theme: ThemeMode = saved === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = theme;
+  window.ScrollLensApp?.setSystemTheme?.(theme === "dark");
   return theme;
 }
 
@@ -30,6 +32,7 @@ function getInitialRightPanelOpen(): boolean {
 interface AppState {
   mode: AppMode;
   activeView: ActiveView;
+  mobileView: MobileView;
   theme: ThemeMode;
   mobileSidebarOpen: boolean;
   rightPanelOpen: boolean;
@@ -51,6 +54,7 @@ interface AppState {
 
   setMode: (mode: AppMode) => void;
   setActiveView: (view: ActiveView) => void;
+  setMobileView: (view: MobileView) => void;
   toggleTheme: () => void;
   setMobileSidebarOpen: (open: boolean) => void;
   setRightPanelOpen: (open: boolean) => void;
@@ -77,6 +81,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   mode: "novel",
   activeView: "workspace",
+  mobileView: "shelf",
   theme: loadInitialTheme(),
   mobileSidebarOpen: false,
   rightPanelOpen: getInitialRightPanelOpen(),
@@ -98,10 +103,19 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setMode: (mode) => set({ mode, mobileSidebarOpen: false }),
   setActiveView: (activeView) => set({ activeView, mobileSidebarOpen: false }),
+  setMobileView: (mobileView) =>
+    set({
+      mobileView,
+      mobileSidebarOpen: false,
+      ...(mobileView === "shelf" && typeof window !== "undefined" && window.innerWidth < 1024
+        ? { rightPanelOpen: false }
+        : {}),
+    }),
   toggleTheme: () => {
     const next: ThemeMode = get().theme === "light" ? "dark" : "light";
     localStorage.setItem(THEME_KEY, next);
     document.documentElement.dataset.theme = next;
+    window.ScrollLensApp?.setSystemTheme?.(next === "dark");
     set({ theme: next });
   },
   setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),

@@ -89,6 +89,8 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SCROLLLENS_DEFAULT_SERVER_URL: ${{ secrets.SCROLLLENS_DEFAULT_SERVER_URL }}
+          SCROLLLENS_DEFAULT_SERVER_NAME: ${{ secrets.SCROLLLENS_DEFAULT_SERVER_NAME }}
         run: |
           if [[ "${{ steps.signing.outputs.has_signing }}" == "true" ]]; then
             gradle assembleRelease -PversionName="${{ steps.meta.outputs.version_name }}" -PversionCode="${{ steps.meta.outputs.version_code }}" --no-daemon

@@ -156,14 +156,14 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-canvas px-4 py-6 sl-pb-safe">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex-1 overflow-y-auto bg-canvas px-4 pt-5 pb-[max(2.75rem,calc(1.75rem+env(safe-area-inset-bottom)))]">
+      <div className="mx-auto max-w-4xl space-y-5 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setActiveView("workspace")}
-              className="sl-btn inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-xs font-medium text-ink hover:border-line-strong"
+              className="sl-btn hidden md:inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-xs font-medium text-ink hover:border-line-strong"
             >
               <ArrowLeft className="h-4 w-4" />
               <span>返回工作台</span>
@@ -172,14 +172,24 @@ export function SettingsPage() {
           </div>
 
           {hasAndroidBridge && (
-            <button
-              type="button"
-              onClick={() => window.ScrollLensApp?.openServerConfig()}
-              className="sl-btn inline-flex h-9 items-center gap-1.5 rounded-xl border border-accent bg-accent-soft px-3 text-xs font-medium text-accent"
-            >
-              <Smartphone className="h-4 w-4" />
-              <span>切换/配置服务器地址</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.ScrollLensApp?.openServerConfig()}
+                className="sl-btn inline-flex h-10 sm:h-9 flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-xl border border-accent bg-accent-soft px-3 text-xs font-medium text-accent"
+              >
+                <Smartphone className="h-4 w-4" />
+                <span>切换/配置服务器地址</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="sl-btn inline-flex h-10 sm:h-9 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-xs font-medium text-ink-secondary hover:text-ink"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>刷新页面</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -193,8 +203,8 @@ export function SettingsPage() {
         )}
 
         {/* Provider Configuration */}
-        <section className="rounded-2xl border border-line bg-surface p-5 sm:p-6 space-y-5">
-          <div className="flex items-center justify-between">
+        <section className="rounded-2xl border border-line bg-surface p-4 sm:p-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-accent" />
               <h2 className="text-sm font-semibold text-ink">添加模型与中转站 (BYOK)</h2>
@@ -400,7 +410,7 @@ export function SettingsPage() {
                       {p.protocol} · {p.base_url} · {p.api_key_masked}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={async () => {
@@ -408,7 +418,7 @@ export function SettingsPage() {
                         setProbeResult(res);
                         await refreshProviders();
                       }}
-                      className="sl-btn h-8 rounded-lg border border-line bg-surface px-2.5 text-[11px] text-ink-secondary hover:text-ink"
+                      className="sl-btn h-9 rounded-lg border border-line bg-surface px-3 text-xs text-ink-secondary hover:text-ink"
                     >
                       自检
                     </button>
@@ -419,21 +429,23 @@ export function SettingsPage() {
                           await providersApi.update(p.id, { is_default: true });
                           await refreshProviders();
                         }}
-                        className="sl-btn inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-surface px-2.5 text-[11px] text-ink-secondary hover:text-ink"
+                        className="sl-btn inline-flex h-9 items-center gap-1 rounded-lg border border-line bg-surface px-3 text-xs text-ink-secondary hover:text-ink"
                       >
-                        <Star className="h-3 w-3" />
+                        <Star className="h-3.5 w-3.5" />
                         <span>设为默认</span>
                       </button>
                     )}
                     <button
                       type="button"
                       onClick={async () => {
-                        await providersApi.delete(p.id);
-                        await refreshProviders();
+                        if (window.confirm(`确定删除模型配置「${p.name}」吗？`)) {
+                          await providersApi.delete(p.id);
+                          await refreshProviders();
+                        }
                       }}
-                      className="sl-btn inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:text-danger"
+                      className="sl-btn inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted hover:text-danger"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -451,13 +463,14 @@ export function SettingsPage() {
             </div>
 
             <form onSubmit={handleSaveAdmin} className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs">
-              <label className="flex items-center gap-2 sm:col-span-3 text-ink cursor-pointer">
+              <label className="flex items-center gap-2.5 py-1 sm:col-span-3 text-ink cursor-pointer">
                 <input
                   type="checkbox"
                   checked={adminSettings.allow_registration}
                   onChange={(e) =>
                     setAdminSettings({ ...adminSettings, allow_registration: e.target.checked })
                   }
+                  className="h-4 w-4 accent-accent"
                 />
                 <span>允许新用户公开注册</span>
               </label>

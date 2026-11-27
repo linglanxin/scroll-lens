@@ -2,9 +2,11 @@ package io.github.scrolllens.app
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.widget.FrameLayout
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -19,11 +21,13 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowInsetsControllerCompat
 import com.google.android.material.button.MaterialButton
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var serverStore: ServerStore
+    private lateinit var rootContainer: FrameLayout
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private lateinit var errorOverlay: LinearLayout
@@ -77,6 +81,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         serverStore = ServerStore(this)
+        rootContainer = findViewById(R.id.rootContainer)
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
         errorOverlay = findViewById(R.id.errorOverlay)
@@ -88,7 +93,10 @@ class MainActivity : AppCompatActivity() {
         configureListeners()
         registerBackNavigation()
 
-        val active = serverStore.getActiveServer()
+        val active = serverStore.ensureDefaultServer(
+            BuildConfig.DEFAULT_SERVER_URL,
+            BuildConfig.DEFAULT_SERVER_NAME
+        )
         if (active == null) {
             launchServerConfigOnce()
         } else {
@@ -239,5 +247,17 @@ class MainActivity : AppCompatActivity() {
         loadedServerUrl = url
         errorOverlay.visibility = View.GONE
         webView.loadUrl(url)
+    }
+
+    @Suppress("DEPRECATION")
+    fun applySystemBarTheme(isDark: Boolean) {
+        val statusColor = Color.parseColor(if (isDark) "#15171A" else "#FFFFFF")
+        val navColor = Color.parseColor(if (isDark) "#0E0F11" else "#F8F8F6")
+        window.statusBarColor = statusColor
+        window.navigationBarColor = navColor
+        rootContainer.setBackgroundColor(statusColor)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.isAppearanceLightStatusBars = !isDark
+        controller.isAppearanceLightNavigationBars = !isDark
     }
 }

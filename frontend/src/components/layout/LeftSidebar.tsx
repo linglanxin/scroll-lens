@@ -248,7 +248,9 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
         {mode === "novel" ? (
           books.length === 0 ? (
             <div className="rounded-xl border border-dashed border-line px-3 py-5 text-center text-xs text-ink-muted space-y-1">
-              <p className="font-medium text-ink-secondary">暂无小说，可直接拖拽文件到此</p>
+              <p className="font-medium text-ink-secondary">
+                暂无小说<span className="hidden md:inline">，可直接拖拽文件到此</span>
+              </p>
               <p className="text-[11px] leading-relaxed">
                 支持 TXT / EPUB / MOBI / AZW3 / FB2 / PDF / DOCX / MD / HTML / ZIP
               </p>
@@ -291,7 +293,7 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-0.5 shrink-0 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 shrink-0 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -299,7 +301,7 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
                           setAppendTargetId(book.id);
                           appendInputRef.current?.click();
                         }}
-                        className="rounded-md p-1.5 text-ink-secondary hover:bg-surface hover:text-ink"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-secondary hover:bg-surface hover:text-ink"
                         title="连载追更（增量追加，也可直接拖文件到本书卡片）"
                       >
                         <FilePlus2 className="h-3.5 w-3.5" />
@@ -308,9 +310,11 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          void deleteBook(book.id);
+                          if (window.confirm(`确定要删除《${book.title}》及其全部索引与会话吗？`)) {
+                            void deleteBook(book.id);
+                          }
                         }}
-                        className="rounded-md p-1.5 text-ink-secondary hover:bg-surface hover:text-danger"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-secondary hover:bg-surface hover:text-danger"
                         title="删除书籍"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -323,7 +327,9 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
           )
         ) : docs.length === 0 ? (
           <div className="rounded-xl border border-dashed border-line px-3 py-5 text-center text-xs text-ink-muted space-y-1">
-            <p className="font-medium text-ink-secondary">暂无文档，可直接拖拽文件到此</p>
+            <p className="font-medium text-ink-secondary">
+              暂无文档<span className="hidden md:inline">，可直接拖拽文件到此</span>
+            </p>
             <p className="text-[11px] leading-relaxed">
               支持 PDF / PPTX / DOCX / MD / TXT
             </p>
@@ -366,9 +372,11 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      void deleteDoc(doc.id);
+                      if (window.confirm(`确定要删除文档「${doc.filename}」吗？`)) {
+                        void deleteDoc(doc.id);
+                      }
                     }}
-                    className="shrink-0 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 rounded-md p-1.5 text-ink-secondary hover:bg-surface hover:text-danger transition-opacity"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center opacity-90 sm:opacity-0 sm:group-hover:opacity-100 rounded-lg text-ink-secondary hover:bg-surface hover:text-danger transition-opacity"
                     title="删除文档"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -431,9 +439,11 @@ export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarPr
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    void deleteSession(sess.id);
+                    if (window.confirm(`确定删除会话「${sess.title}」吗？`)) {
+                      void deleteSession(sess.id);
+                    }
                   }}
-                  className="shrink-0 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 rounded p-1 text-ink-muted hover:text-danger transition-opacity"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 rounded-lg text-ink-muted hover:text-danger transition-opacity"
                   aria-label="删除会话"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

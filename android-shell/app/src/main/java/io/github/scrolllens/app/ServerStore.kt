@@ -45,6 +45,13 @@ class ServerStore(context: Context) {
         return servers.firstOrNull { it.id == activeId } ?: servers.first()
     }
 
+    fun ensureDefaultServer(rawUrl: String, name: String = "默认服务器"): ServerProfile? {
+        getActiveServer()?.let { return it }
+        val normalized = ServerUrlNormalizer.normalize(rawUrl)
+        if (!ServerUrlNormalizer.isValidHttpUrl(normalized)) return null
+        return saveAndActivate(name.ifBlank { "默认服务器" }, normalized)
+    }
+
     fun saveAndActivate(name: String, rawUrl: String): ServerProfile {
         val url = ServerUrlNormalizer.normalize(rawUrl)
         require(ServerUrlNormalizer.isValidHttpUrl(url)) { "Invalid server URL" }
