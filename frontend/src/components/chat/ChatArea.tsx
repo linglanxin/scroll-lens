@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
+  ArrowLeft,
   BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   FileText,
   Loader2,
+  MessageSquarePlus,
   ScanEye,
   Sparkles,
   Upload,
@@ -18,7 +22,7 @@ import { documentsApi } from "../../api/documents";
 import { useAppStore } from "../../stores/appStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useReaderStore } from "../../stores/readerStore";
-import type { Citation, ToolTraceItem } from "../../types/api";
+import type { ChatMessage, Citation, ToolTraceItem } from "../../types/api";
 import { BrandLogo } from "../common/BrandLogo";
 import {
   DOC_ACCEPT,
@@ -27,11 +31,50 @@ import {
   NOVEL_FORMAT_BADGES,
 } from "../common/fileFormats";
 import { PromptBar } from "./PromptBar";
+import { SessionHistoryOverview } from "./SessionHistoryOverview";
 
 function injectCitationLinks(markdown: string): string {
   return markdown
     .replace(/\[ch:(\d+)\]/g, "[第$1章](#sl-ch-$1)")
     .replace(/\[p:(\d+)\]/g, "[P$1](#sl-p-$1)");
+}
+
+function summarizePreviewText(text: string, maxLen = 90): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLen) return cleaned;
+  return `${cleaned.slice(0, maxLen - 1).trimEnd()}…`;
+}
+
+interface QATurn {
+  index: number;
+  userMsg: ChatMessage;
+  assistantMsg: ChatMessage | null;
+}
+
+function buildQATurns(messages: ChatMessage[]): {
+  turns: QATurn[];
+  orphanMessages: ChatMessage[];
+} {
+  const turns: QATurn[] = [];
+  const orphanMessages: ChatMessage[] = [];
+  let current: QATurn | null = null;
+
+  for (const m of messages) {
+    if (m.role === "user") {
+      current = {
+        index: turns.length + 1,
+        userMsg: m,
+        assistantMsg: null,
+      };
+      turns.push(current);
+    } else if (m.role === "assistant" && current && !current.assistantMsg) {
+      current.assistantMsg = m;
+      current = null;
+    } else {
+      orphanMessages.push(m);
+    }
+  }
+  return { turns, orphanMessages };
 }
 
 function ToolTraceCapsule({ trace }: { trace: ToolTraceItem[] }) {
@@ -123,12 +166,22 @@ export function ChatArea() {
   } = useAppStore();
 
   const {
+    sessions,
+    activeSessionId,
+    chatView,
+    loadingSessions,
+    focusMessageId,
+    summarizingIds,
     messages,
     isStreaming,
     streamingText,
     streamingTools,
     streamingCitations,
     error,
+    openOverview,
+    clearFocusMessage,
+    newSession,
+    summarizeSession,
     sendMessage,
     stopStreaming,
     clearError,
@@ -139,24 +192,118 @@ export function ChatArea() {
   const [draft, setDraft] = useState("");
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrFeedback, setOcrFeedback] = useState<string | null>(null);
+  const [collapsedTurns, setCollapsedTurns] = useState<Record<number, boolean>>({});
+  const [highlightedMsgId, setHighlightedMsgId] = useState<number | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const emptyUploadRef = useRef<HTMLInputElement>(null);
+  const turnRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const initializedSessionKeyRef = useRef<string | null>(null);
 
   const activeBook = books.find((b) => b.id === selectedBookId) ?? null;
   const activeDoc = docs.find((d) => d.id === selectedDocId) ?? null;
   const targetId = mode === "novel" ? selectedBookId : selectedDocId;
+  const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
+
+  const { turns, orphanMessages } = useMemo(
+    () => buildQATurns(messages),
+    [messages]
+  );
 
   useEffect(() => {
     setOcrFeedback(null);
     setOcrBusy(false);
   }, [selectedDocId]);
 
+  // Reset turn folding defaults when entering a session or focusing a specific historical Q&A
   useEffect(() => {
+    if (chatView !== "chat") {
+      initializedSessionKeyRef.current = null;
+      return;
+    }
+
+    const sessionKey = `${mode}:${targetId ?? 0}:${activeSessionId ?? "new"}`;
+
+    if (focusMessageId && turns.some((t) => t.userMsg.id === focusMessageId)) {
+      const nextCollapsed: Record<number, boolean> = {};
+      if (turns.length >= 3) {
+        turns.forEach((t, idx) => {
+          const isTarget = t.userMsg.id === focusMessageId;
+          const isLast = idx === turns.length - 1;
+          nextCollapsed[t.userMsg.id] = !isTarget && !isLast;
+        });
+      }
+      setCollapsedTurns(nextCollapsed);
+      initializedSessionKeyRef.current = sessionKey;
+
+      const targetIdToScroll = focusMessageId;
+      clearFocusMessage();
+      setHighlightedMsgId(targetIdToScroll);
+
+      const raf = window.requestAnimationFrame(() => {
+        const el = turnRefs.current[targetIdToScroll];
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      const timer = window.setTimeout(() => {
+        setHighlightedMsgId((cur) => (cur === targetIdToScroll ? null : cur));
+      }, 2200);
+      return () => {
+        window.cancelAnimationFrame(raf);
+        window.clearTimeout(timer);
+      };
+    }
+
+    if (initializedSessionKeyRef.current !== sessionKey && turns.length > 0 && !isStreaming) {
+      initializedSessionKeyRef.current = sessionKey;
+      const nextCollapsed: Record<number, boolean> = {};
+      if (turns.length >= 3) {
+        turns.forEach((t, idx) => {
+          if (idx < turns.length - 2) {
+            nextCollapsed[t.userMsg.id] = true;
+          }
+        });
+      }
+      setCollapsedTurns(nextCollapsed);
+    } else if (turns.length === 0) {
+      setCollapsedTurns({});
+      if (activeSessionId === null) {
+        initializedSessionKeyRef.current = sessionKey;
+      }
+    }
+  }, [
+    chatView,
+    mode,
+    targetId,
+    activeSessionId,
+    turns,
+    focusMessageId,
+    isStreaming,
+    clearFocusMessage,
+  ]);
+
+  // Keep latest streaming turn expanded and scrolled into view
+  useEffect(() => {
+    if (!isStreaming) return;
+    const lastTurn = turns[turns.length - 1];
+    if (lastTurn) {
+      setCollapsedTurns((prev) =>
+        prev[lastTurn.userMsg.id] ? { ...prev, [lastTurn.userMsg.id]: false } : prev
+      );
+    }
     const el = scrollRef.current;
     if (el) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages.length, streamingText, streamingTools.length]);
+  }, [isStreaming, turns, streamingText, streamingTools.length]);
+
+  useEffect(() => {
+    if (chatView === "chat" && !focusMessageId && !highlightedMsgId && !isStreaming) {
+      const el = scrollRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+  }, [chatView, messages.length, focusMessageId, highlightedMsgId, isStreaming]);
 
   function handleCitationClick(kind: "ch" | "p", num: number) {
     if (kind === "ch" && selectedBookId) {
@@ -357,10 +504,120 @@ export function ChatArea() {
     );
   }
 
+  if (chatView === "overview" && !isStreaming) {
+    if (loadingSessions && sessions.length === 0) {
+      return (
+        <div className="flex flex-1 items-center justify-center gap-2 text-xs text-ink-muted">
+          <Loader2 className="h-4 w-4 animate-spin text-accent" />
+          <span>正在加载历史对话...</span>
+        </div>
+      );
+    }
+    if (sessions.length > 0) {
+      return <SessionHistoryOverview />;
+    }
+  }
+
   const starters = mode === "novel" ? NOVEL_STARTERS : DOC_STARTERS;
+  const allTurnsCollapsed =
+    turns.length >= 2 && turns.every((t) => Boolean(collapsedTurns[t.userMsg.id]));
+  const isSummarizingActive = Boolean(
+    activeSessionId && summarizingIds[activeSessionId]
+  );
+
+  function toggleAllTurns() {
+    const nextState = !allTurnsCollapsed;
+    const next: Record<number, boolean> = {};
+    for (const t of turns) {
+      next[t.userMsg.id] = nextState;
+    }
+    setCollapsedTurns(next);
+  }
 
   return (
     <section className="flex flex-1 flex-col min-w-0 min-h-0 bg-canvas">
+      {/* Chat Context & Folding Bar */}
+      {(sessions.length > 0 || messages.length > 0) && (
+        <div className="flex items-center justify-between gap-2 border-b border-line bg-surface/85 px-3 sm:px-6 py-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            {sessions.length > 0 && (
+              <button
+                type="button"
+                onClick={openOverview}
+                className="sl-btn inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-line bg-elevated px-2.5 text-xs font-medium text-ink-secondary hover:border-accent hover:text-accent"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>历史对话 ({sessions.length})</span>
+              </button>
+            )}
+            <div className="flex items-center gap-1.5 min-w-0">
+              {activeSession?.summary_source === "ai" && (
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+              )}
+              <span className="truncate text-xs font-medium text-ink">
+                {activeSession
+                  ? activeSession.summary || activeSession.title
+                  : "新对话"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            {turns.length >= 2 && (
+              <button
+                type="button"
+                onClick={toggleAllTurns}
+                className="sl-btn inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-elevated px-2.5 text-[11px] font-medium text-ink-secondary hover:border-line-strong hover:text-ink"
+              >
+                {allTurnsCollapsed ? (
+                  <>
+                    <ChevronsUpDown className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">全部展开</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronsDownUp className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">全部折叠</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {activeSessionId && turns.length >= 1 && selectedProviderId && (
+              <button
+                type="button"
+                disabled={isSummarizingActive || isStreaming}
+                onClick={() =>
+                  void summarizeSession(activeSessionId, selectedProviderId)
+                }
+                className="sl-btn inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-elevated px-2.5 text-[11px] font-medium text-ink-secondary hover:border-accent hover:text-accent disabled:opacity-50"
+                title="AI 生成或刷新当前会话一句话总结"
+              >
+                {isSummarizingActive ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                ) : (
+                  <Sparkles className="h-3 w-3 text-accent" />
+                )}
+                <span className="hidden sm:inline">
+                  {isSummarizingActive ? "总结中..." : "AI 总结"}
+                </span>
+              </button>
+            )}
+
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={newSession}
+                className="sl-btn inline-flex h-8 items-center gap-1 rounded-lg bg-accent-soft px-2.5 text-[11px] font-medium text-accent hover:bg-accent hover:text-accent-fg"
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">新对话</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Document Scanned Pages Banner */}
       {mode === "document" && activeDoc?.has_scanned_pages && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs text-warning shrink-0">
@@ -384,7 +641,6 @@ export function ChatArea() {
                   const res = await documentsApi.startOcr(activeDoc.id, selectedProviderId);
                   setOcrFeedback(`已启动视觉 OCR（共 ${res.total_pages} 页），可在右侧面板查看实时进度...`);
                   setRightPanelOpen(true);
-                  // Poll until finished so the banner clears automatically once OCR succeeds
                   for (let i = 0; i < 120; i++) {
                     await new Promise((r) => setTimeout(r, 2000));
                     const st = await documentsApi.ocrStatus(activeDoc.id);
@@ -421,7 +677,7 @@ export function ChatArea() {
       )}
 
       {/* Messages Stage */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 sm:px-6 py-5 space-y-5">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 sm:px-6 py-5 space-y-4">
         {messages.length === 0 && !isStreaming && (
           <div className="mx-auto max-w-[780px] pt-6 pb-4">
             <div className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
@@ -454,43 +710,117 @@ export function ChatArea() {
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`mx-auto flex max-w-[780px] flex-col ${
-              msg.role === "user" ? "items-end" : "items-start"
-            }`}
-          >
-            {msg.role === "user" ? (
-              <div className="max-w-[88%] sm:max-w-[78%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[14px] leading-relaxed text-accent-fg whitespace-pre-wrap">
-                {msg.content}
-              </div>
-            ) : (
-              <div className="w-full rounded-2xl border border-line bg-surface p-4 sm:p-5">
-                <ToolTraceCapsule trace={msg.tool_trace} />
-                {renderMarkdown(msg.content)}
-                {renderCitationsBar(msg.citations)}
-              </div>
-            )}
-          </div>
-        ))}
+        {turns.map((turn, idx) => {
+          const isLastTurn = idx === turns.length - 1;
+          const isTurnStreaming = isStreaming && isLastTurn && !turn.assistantMsg;
+          const isCollapsed =
+            !isTurnStreaming && Boolean(collapsedTurns[turn.userMsg.id]);
+          const isHighlighted = highlightedMsgId === turn.userMsg.id;
+          const showFoldHeader = turns.length >= 2 || isCollapsed;
+          const citCount = turn.assistantMsg?.citations.length ?? 0;
 
-        {isStreaming && (
-          <div className="mx-auto flex max-w-[780px] flex-col items-start">
-            <div className="w-full rounded-2xl border border-line bg-surface p-4 sm:p-5">
-              <ToolTraceCapsule trace={streamingTools} />
-              {streamingText ? (
-                renderMarkdown(streamingText)
-              ) : (
-                <div className="flex items-center gap-2 text-xs text-ink-muted">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
-                  <span>正在查证原文并组织回答...</span>
+          return (
+            <div
+              key={turn.userMsg.id}
+              ref={(el) => {
+                turnRefs.current[turn.userMsg.id] = el;
+              }}
+              data-msg-id={turn.userMsg.id}
+              className={`mx-auto max-w-[780px] scroll-mt-4 rounded-2xl transition ${
+                isHighlighted
+                  ? "ring-2 ring-accent/60 bg-accent-soft/20 p-2 sm:p-2.5"
+                  : ""
+              }`}
+            >
+              {showFoldHeader && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsedTurns((prev) => ({
+                      ...prev,
+                      [turn.userMsg.id]: !isCollapsed,
+                    }))
+                  }
+                  className={`flex w-full items-center justify-between gap-2.5 rounded-xl border px-3 py-2 text-left transition ${
+                    isCollapsed
+                      ? "border-line bg-surface hover:border-line-strong"
+                      : "mb-2.5 border-line/70 bg-elevated/55 hover:border-line"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="sl-num shrink-0 rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                      Q{turn.index}
+                    </span>
+                    <span className="truncate text-xs font-medium text-ink">
+                      {summarizePreviewText(turn.userMsg.content, 80)}
+                    </span>
+                    {isCollapsed && turn.assistantMsg && (
+                      <span className="hidden md:inline truncate text-[11px] text-ink-muted">
+                        — {summarizePreviewText(turn.assistantMsg.content, 50)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-muted">
+                    {citCount > 0 && (
+                      <span className="sl-num rounded bg-elevated px-1.5 py-0.5 text-[10px]">
+                        {citCount} 引用
+                      </span>
+                    )}
+                    {isCollapsed ? (
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 text-accent" />
+                    )}
+                  </div>
+                </button>
+              )}
+
+              {!isCollapsed && (
+                <div className="flex flex-col space-y-3">
+                  <div className="flex justify-end">
+                    <div className="max-w-[88%] sm:max-w-[78%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[14px] leading-relaxed text-accent-fg whitespace-pre-wrap">
+                      {turn.userMsg.content}
+                    </div>
+                  </div>
+
+                  {turn.assistantMsg ? (
+                    <div className="w-full rounded-2xl border border-line bg-surface p-4 sm:p-5">
+                      <ToolTraceCapsule trace={turn.assistantMsg.tool_trace} />
+                      {renderMarkdown(turn.assistantMsg.content)}
+                      {renderCitationsBar(turn.assistantMsg.citations)}
+                    </div>
+                  ) : isTurnStreaming ? (
+                    <div className="w-full rounded-2xl border border-line bg-surface p-4 sm:p-5">
+                      <ToolTraceCapsule trace={streamingTools} />
+                      {streamingText ? (
+                        renderMarkdown(streamingText)
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-ink-muted">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                          <span>正在查证原文并组织回答...</span>
+                        </div>
+                      )}
+                      {renderCitationsBar(streamingCitations)}
+                    </div>
+                  ) : null}
                 </div>
               )}
-              {renderCitationsBar(streamingCitations)}
+            </div>
+          );
+        })}
+
+        {orphanMessages.map((msg) => (
+          <div
+            key={msg.id}
+            className="mx-auto flex max-w-[780px] flex-col items-start"
+          >
+            <div className="w-full rounded-2xl border border-line bg-surface p-4 sm:p-5">
+              <ToolTraceCapsule trace={msg.tool_trace} />
+              {renderMarkdown(msg.content)}
+              {renderCitationsBar(msg.citations)}
             </div>
           </div>
-        )}
+        ))}
       </div>
 
       {error && (

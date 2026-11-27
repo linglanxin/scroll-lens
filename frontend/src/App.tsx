@@ -6,6 +6,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import { useAppStore } from "./stores/appStore";
 import { useAuthStore } from "./stores/authStore";
+import { useChatStore } from "./stores/chatStore";
 
 export function App() {
   const { user, initializing, hydrate } = useAuthStore();
@@ -45,6 +46,11 @@ export function App() {
         return true;
       }
       if (window.innerWidth < 768 && state.mobileView === "workspace") {
+        const chatState = useChatStore.getState();
+        if (chatState.chatView === "chat" && chatState.sessions.length > 0) {
+          chatState.openOverview();
+          return true;
+        }
         state.setMobileView("shelf");
         return true;
       }

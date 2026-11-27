@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Any, AsyncIterator, Optional
 
@@ -31,6 +32,109 @@ class ChatStreamRequest(BaseModel):
 
 class SessionUpdateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
+
+
+class SessionSummarizeRequest(BaseModel):
+    provider_id: Optional[int] = None
+
+
+def _clean_one_line(text: str, max_len: int) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "")).strip()
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max(1, max_len - 1)].rstrip() + "…"
+
+
+def _build_local_summary(questions: list[dict[str, Any]], title: str) -> str:
+    count = len(questions)
+    if count == 0:
+        return _clean_one_line(title, 60)
+    if count == 1:
+        return _clean_one_line(questions[0]["question"], 70)
+    if count == 2:
+        q1 = _clean_one_line(questions[0]["question"], 26)
+        q2 = _clean_one_line(questions[1]["question"], 26)
+        return f"围绕「{q1}」与「{q2}」等 2 个问题展开"
+    first_q = _clean_one_line(questions[0]["question"], 22)
+    last_q = _clean_one_line(questions[-1]["question"], 22)
+    return f"共 {count} 轮问答：从「{first_q}」到「{last_q}」"
+
+
+def _enrich_sessions(
+    conn: sqlite3.Connection,
+    session_rows: list[sqlite3.Row],
+) -> list[dict[str, Any]]:
+    if not session_rows:
+        return []
+
+    session_ids = [int(r["id"]) for r in session_rows]
+    placeholders = ",".join("?" for _ in session_ids)
+    msg_rows = conn.execute(
+        f"SELECT id, session_id, role, content, citations_json, created_at "
+        f"FROM chat_messages WHERE session_id IN ({placeholders}) ORDER BY session_id ASC, id ASC",
+        session_ids,
+    ).fetchall()
+
+    grouped: dict[int, list[sqlite3.Row]] = {sid: [] for sid in session_ids}
+    for mr in msg_rows:
+        grouped.setdefault(int(mr["session_id"]), []).append(mr)
+
+    enriched: list[dict[str, Any]] = []
+    for row in session_rows:
+        sid = int(row["id"])
+        msgs = grouped.get(sid, [])
+        questions: list[dict[str, Any]] = []
+        total_citations = 0
+        pending_q: dict[str, Any] | None = None
+
+        for m in msgs:
+            role = m["role"]
+            if role == "user":
+                pending_q = {
+                    "message_id": int(m["id"]),
+                    "index": len(questions) + 1,
+                    "question": _clean_one_line(m["content"], 160),
+                    "answer_preview": "",
+                    "citations_count": 0,
+                    "created_at": m["created_at"],
+                }
+                questions.append(pending_q)
+            elif role == "assistant":
+                try:
+                    cits = json.loads(m["citations_json"] or "[]")
+                except json.JSONDecodeError:
+                    cits = []
+                cit_len = len(cits) if isinstance(cits, list) else 0
+                total_citations += cit_len
+                if pending_q is not None and not pending_q["answer_preview"]:
+                    pending_q["answer_preview"] = _clean_one_line(m["content"], 120)
+                    pending_q["citations_count"] = cit_len
+                    pending_q = None
+
+        item = dict(row)
+        stored_summary = str(item.get("summary") or "").strip()
+        stored_source = str(item.get("summary_source") or "none")
+
+        if stored_source == "ai" and stored_summary:
+            eff_summary = stored_summary
+            eff_source = "ai"
+        elif questions:
+            eff_summary = _build_local_summary(questions, str(item.get("title") or ""))
+            eff_source = "local"
+        else:
+            eff_summary = _clean_one_line(str(item.get("title") or ""), 60)
+            eff_source = "none"
+
+        item["summary"] = eff_summary
+        item["summary_source"] = eff_source
+        item["question_count"] = len(questions)
+        item["message_count"] = len(msgs)
+        item["total_citations"] = total_citations
+        item["last_question"] = questions[-1]["question"] if questions else ""
+        item["questions"] = questions
+        enriched.append(item)
+
+    return enriched
 
 
 def _format_sse(event: str, data: dict[str, Any]) -> str:
@@ -68,7 +172,7 @@ def list_sessions(
             f"SELECT * FROM chat_sessions WHERE {where} ORDER BY updated_at DESC, id DESC",
             params,
         ).fetchall()
-    return [dict(r) for r in rows]
+        return _enrich_sessions(conn, rows)
 
 
 @router.patch("/sessions/{session_id}")
@@ -85,7 +189,99 @@ def rename_session(
             (body.title.strip(), utcnow_iso(), session_id),
         )
         row = _require_owned_session(conn, session_id, current_user.id)
-    return dict(row)
+        return _enrich_sessions(conn, [row])[0]
+
+
+@router.post("/sessions/{session_id}/summarize")
+async def summarize_session(
+    session_id: int,
+    body: SessionSummarizeRequest = SessionSummarizeRequest(),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
+) -> dict:
+    secret_key = settings.resolved_secret_key()
+
+    with db.session() as conn:
+        sess = _require_owned_session(conn, session_id, current_user.id)
+        if body.provider_id is not None:
+            prov = conn.execute(
+                "SELECT * FROM llm_providers WHERE id = ? AND user_id = ?",
+                (body.provider_id, current_user.id),
+            ).fetchone()
+        else:
+            prov = conn.execute(
+                "SELECT * FROM llm_providers WHERE user_id = ? ORDER BY is_default DESC, id ASC LIMIT 1",
+                (current_user.id,),
+            ).fetchone()
+        if prov is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please configure an LLM provider API key first",
+            )
+        prov_dict = dict(prov)
+
+        msg_rows = conn.execute(
+            "SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id ASC",
+            (session_id,),
+        ).fetchall()
+        dialog_rows = [r for r in msg_rows if r["role"] in ("user", "assistant")]
+        if not any(r["role"] == "user" for r in dialog_rows):
+            return _enrich_sessions(conn, [sess])[0]
+
+        if sess["mode"] == "novel":
+            target_row = conn.execute("SELECT title FROM books WHERE id = ?", (sess["target_id"],)).fetchone()
+            target_label = f"小说《{target_row['title']}》" if target_row else "当前小说"
+        else:
+            target_row = conn.execute("SELECT filename FROM documents WHERE id = ?", (sess["target_id"],)).fetchone()
+            target_label = f"文档「{target_row['filename']}」" if target_row else "当前文档"
+
+    recent = dialog_rows[-16:]
+    transcript_lines: list[str] = []
+    q_idx = 0
+    for r in recent:
+        if r["role"] == "user":
+            q_idx += 1
+            transcript_lines.append(f"Q{q_idx}: {_clean_one_line(r['content'], 200)}")
+        else:
+            transcript_lines.append(f"A{q_idx}: {_clean_one_line(r['content'], 260)}")
+
+    api_key = decrypt_api_key(prov_dict["api_key_enc"], secret_key)
+    adapter = create_adapter(
+        protocol=prov_dict["protocol"],
+        base_url=prov_dict["base_url"],
+        api_key=api_key,
+        model_name=prov_dict["model_name"],
+        timeout=60.0,
+    )
+
+    system_prompt = (
+        "你是阅读工作台的对话历史整理助手。请根据多轮问答记录，"
+        "生成一句高度凝练的中文摘要，概括本会话讨论的核心主题或线索演进（20~55字）。"
+        "严格要求：只输出这一句纯文本摘要，不要加引号、序号、Markdown 符号或“总结：”等前缀。"
+    )
+    user_prompt = f"阅读对象：{target_label}\n\n对话记录：\n" + "\n".join(transcript_lines)
+
+    raw = await adapter.complete_once(
+        messages=[LLMMessage(role="user", content=user_prompt)],
+        system_prompt=system_prompt,
+        temperature=0.2,
+    )
+    cleaned = re.sub(r"\s+", " ", (raw or "")).strip()
+    cleaned = cleaned.strip("\"'“”‘’「」`*_ ")
+    cleaned = re.sub(r"^(?:本?会话(?:总结|摘要)|对话(?:总结|摘要)|总结|摘要)\s*[：:]\s*", "", cleaned)
+    cleaned = cleaned.strip("\"'“”‘’「」`*_ ")
+    cleaned = _clean_one_line(cleaned, 80)
+
+    with db.session() as conn:
+        _require_owned_session(conn, session_id, current_user.id)
+        if cleaned:
+            conn.execute(
+                "UPDATE chat_sessions SET summary = ?, summary_source = 'ai' WHERE id = ? AND user_id = ?",
+                (cleaned, session_id, current_user.id),
+            )
+        updated = _require_owned_session(conn, session_id, current_user.id)
+        return _enrich_sessions(conn, [updated])[0]
 
 
 @router.delete("/sessions/{session_id}")
