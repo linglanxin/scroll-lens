@@ -17,6 +17,12 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 import type { Book, DocumentItem } from "../../types/api";
+import {
+  DOC_ACCEPT,
+  DOC_FORMAT_SUMMARY,
+  NOVEL_ACCEPT,
+  NOVEL_FORMAT_SUMMARY,
+} from "../common/fileFormats";
 
 interface SlashTemplate {
   command: string;
@@ -390,9 +396,7 @@ export function PromptBar({
             <input
               ref={uploadInputRef}
               type="file"
-              accept={
-                mode === "novel" ? ".txt,.epub" : ".pdf,.pptx,.docx,.md,.txt"
-              }
+              accept={mode === "novel" ? NOVEL_ACCEPT : DOC_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 void handleQuickUpload(e.target.files?.[0]);
@@ -404,7 +408,11 @@ export function PromptBar({
               disabled={uploading}
               onClick={() => uploadInputRef.current?.click()}
               className="sl-btn inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-secondary hover:bg-hover hover:text-ink disabled:opacity-40"
-              title={mode === "novel" ? "快速导入 TXT/EPUB" : "快速上传 PDF/PPTX/DOCX/MD"}
+              title={
+                mode === "novel"
+                  ? `快速导入小说（${NOVEL_FORMAT_SUMMARY}）`
+                  : `快速上传文档（${DOC_FORMAT_SUMMARY}）`
+              }
               aria-label="上传文件"
             >
               <Paperclip className="h-4 w-4" />

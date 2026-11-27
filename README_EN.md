@@ -9,8 +9,8 @@
 ## Key Features
 
 ### 1. Web Novel Deep-Reading & Anti-Spoiler Engine
-- **Native Volume & Chapter Hierarchy**: Parses `TXT` (auto-detecting `UTF-8` / `GB18030` / `GBK` with web watermark cleanup) and `EPUB` (reconstructing two-level `toc.ncx` / `nav.xhtml` volume trees). Supports manual volume splitting for volume-less books.
-- **Incremental Serialization Append**: Re-importing updated `TXT`/`EPUB` files aligns trailing chapter fingerprints and appends only newly published chapters.
+- **Multi-Format & Native Volume/Chapter Hierarchy**: Parses `TXT` (auto-detecting `UTF-8` / `GB18030` / `GBK` with web watermark cleanup), `EPUB` (two-level `toc.ncx` / `nav.xhtml` volume trees), `MOBI` / `AZW3` / `AZW`, `FB2` (two-level `<section>` hierarchy), `PDF` (outline-first), `DOCX` (Heading 1/2 hierarchy), `Markdown`, `HTML`, and `ZIP` novel archives. Supports manual volume splitting for volume-less books.
+- **PC Drag-and-Drop & Incremental Serialization Append**: Drag single or multiple files directly onto the desktop workspace to import; drop an updated novel file directly onto a bookshelf card to append only newly published chapters via trailing fingerprint matching.
 - **Zero-Cost, Zero-Bloat FTS5 Indexing**: Uses contentless SQLite FTS5 (`content=''`, compatible with SQLite 3.37+) paired with `jieba` search segmentation and alias preservation — **zero LLM/embedding API cost at ingestion**.
 - **Strict Anti-Spoiler Progress Lock**: Set your current chapter (`read_progress_ch`) at any time. All agent tools, chapter lookups, keyword timelines, and volume summaries beyond your progress are strictly locked out.
 - **Alias Expansion & Wiki Notes**: Define entity alias groups (e.g., `Canonical -> Alias1 / Alias2`) for automatic query expansion and FTS5 re-indexing, plus categorized Markdown lore cards.

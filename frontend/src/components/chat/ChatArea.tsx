@@ -10,6 +10,7 @@ import {
   FileText,
   Loader2,
   Sparkles,
+  Upload,
   Wrench,
 } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
@@ -17,6 +18,12 @@ import { useChatStore } from "../../stores/chatStore";
 import { useReaderStore } from "../../stores/readerStore";
 import type { Citation, ToolTraceItem } from "../../types/api";
 import { BrandLogo } from "../common/BrandLogo";
+import {
+  DOC_ACCEPT,
+  DOC_FORMAT_BADGES,
+  NOVEL_ACCEPT,
+  NOVEL_FORMAT_BADGES,
+} from "../common/fileFormats";
 import { PromptBar } from "./PromptBar";
 
 function injectCitationLinks(markdown: string): string {
@@ -107,6 +114,9 @@ export function ChatArea() {
     setRightPanelTab,
     setRightPanelOpen,
     setActiveView,
+    uploadBook,
+    uploadDoc,
+    uploading,
   } = useAppStore();
 
   const {
@@ -125,6 +135,7 @@ export function ChatArea() {
 
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const emptyUploadRef = useRef<HTMLInputElement>(null);
 
   const activeBook = books.find((b) => b.id === selectedBookId) ?? null;
   const activeDoc = docs.find((d) => d.id === selectedDocId) ?? null;
@@ -239,26 +250,77 @@ export function ChatArea() {
   }
 
   if (!targetId) {
+    const badges = mode === "novel" ? NOVEL_FORMAT_BADGES : DOC_FORMAT_BADGES;
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+        <input
+          ref={emptyUploadRef}
+          type="file"
+          multiple
+          accept={mode === "novel" ? NOVEL_ACCEPT : DOC_ACCEPT}
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            void (async () => {
+              for (const file of files) {
+                try {
+                  if (mode === "novel") {
+                    await uploadBook(file);
+                  } else {
+                    await uploadDoc(file);
+                  }
+                } catch {
+                  // store actionError shows failure detail
+                }
+              }
+            })();
+          }}
+        />
         <BrandLogo size="lg" />
         <h1 className="mt-4 text-lg font-semibold text-ink">
           {mode === "novel" ? "导入小说，开始防剧透深度查证" : "上传日常文档，随时精准溯源"}
         </h1>
         <p className="mt-1.5 max-w-md text-xs leading-relaxed text-ink-secondary">
           {mode === "novel"
-            ? "从左侧栏导入 TXT 或 EPUB 小说。系统会自动按原书分卷结构化，并零成本建立本地全文索引。"
-            : "支持纯文字 PDF、PPTX、DOCX、Markdown 与 TXT。四万字内全文无损直读，超长文档自动切换分页检索。"}
+            ? "点击下方按钮，或直接将本地小说文件拖拽到窗口任意位置导入。系统会自动还原原书分卷并零成本建立本地全文索引。"
+            : "点击下方按钮，或直接将本地文档拖拽到窗口中上传。四万字内全文无损直读，超长文档自动切换分页检索。"}
         </p>
-        {!selectedProviderId && (
+
+        <div className="mt-4 flex max-w-md flex-wrap justify-center gap-1.5">
+          {badges.map((fmt) => (
+            <span
+              key={fmt}
+              className="rounded-md border border-line bg-surface px-2 py-0.5 font-mono text-[10px] font-medium text-ink-secondary"
+            >
+              {fmt}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
           <button
             type="button"
-            onClick={() => setActiveView("settings")}
-            className="sl-btn mt-5 rounded-xl bg-accent px-4 py-2 text-xs font-medium text-accent-fg"
+            disabled={uploading}
+            onClick={() => emptyUploadRef.current?.click()}
+            className="sl-btn inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-medium text-accent-fg disabled:opacity-50"
           >
-            前往配置大模型 API Key
+            <Upload className="h-3.5 w-3.5" />
+            <span>
+              {uploading ? "解析入库中..." : mode === "novel" ? "选择或拖拽导入小说" : "选择或拖拽上传文档"}
+            </span>
           </button>
-        )}
+
+          {!selectedProviderId && (
+            <button
+              type="button"
+              onClick={() => setActiveView("settings")}
+              className="sl-btn rounded-xl border border-line bg-surface px-4 py-2 text-xs font-medium text-ink hover:border-line-strong"
+            >
+              前往配置大模型 API Key
+            </button>
+          )}
+        </div>
       </div>
     );
   }

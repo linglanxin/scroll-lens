@@ -160,18 +160,9 @@ class MainActivity : AppCompatActivity() {
 
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
+                    // Use "*/*" without strict EXTRA_MIME_TYPES so Android file pickers
+                    // do not gray out ebook formats like .mobi, .azw3, .fb2, or .md.
                     type = "*/*"
-                    putExtra(
-                        Intent.EXTRA_MIME_TYPES,
-                        arrayOf(
-                            "text/plain",
-                            "text/markdown",
-                            "application/epub+zip",
-                            "application/pdf",
-                            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
-                    )
                 }
                 return try {
                     fileChooserLauncher.launch(intent)

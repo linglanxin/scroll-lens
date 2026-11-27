@@ -17,7 +17,7 @@ from app.engines.novel.indexer import (
     rebuild_book_fts,
     split_book_volumes,
 )
-from app.engines.novel.parser import parse_epub_novel, parse_txt_novel
+from app.engines.novel.parser import SUPPORTED_NOVEL_EXTENSIONS, parse_novel_bytes
 from app.engines.novel.volume_summarizer import VolumeSummarizerManager
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
@@ -37,11 +37,15 @@ def _get_summarizer(request: Request) -> VolumeSummarizerManager:
     return request.app.state.summarizer
 
 
-def _read_upload_with_limit(file: UploadFile, db: Database) -> tuple[str, bytes]:
+def _read_upload_with_limit(file: UploadFile, db: Database) -> tuple[str, bytes, int]:
     filename = file.filename or "novel.txt"
     ext = Path(filename).suffix.lower()
-    if ext not in (".txt", ".epub"):
-        raise HTTPException(status_code=400, detail="Only .txt and .epub files are supported")
+    if ext not in SUPPORTED_NOVEL_EXTENSIONS:
+        supported = ", ".join(SUPPORTED_NOVEL_EXTENSIONS)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported novel format '{ext or '(none)'}'. Supported: {supported}",
+        )
 
     with db.session() as conn:
         max_mb = int(get_system_settings_dict(conn)["max_upload_mb"])
@@ -55,19 +59,24 @@ def _read_upload_with_limit(file: UploadFile, db: Database) -> tuple[str, bytes]
         )
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
-    return filename, raw
+    return filename, raw, max_bytes
 
 
-def _parse_novel_bytes(filename: str, raw: bytes, title_override: str | None = None):
-    ext = Path(filename).suffix.lower()
-    fallback_title = (title_override or "").strip() or Path(filename).stem or "未命名小说"
-    if ext == ".epub":
-        parsed = parse_epub_novel(raw, fallback_title)
-    else:
-        parsed = parse_txt_novel(raw, fallback_title)
-    if title_override and title_override.strip():
-        parsed.title = title_override.strip()
-    return parsed
+def _parse_novel_bytes(
+    filename: str,
+    raw: bytes,
+    title_override: str | None = None,
+    max_uncompressed_bytes: int = 256 * 1024 * 1024,
+):
+    try:
+        return parse_novel_bytes(
+            filename,
+            raw,
+            title_override=title_override,
+            max_uncompressed_bytes=max_uncompressed_bytes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class BookSettingsUpdate(BaseModel):
@@ -126,8 +135,13 @@ def upload_book(
     current_user: CurrentUser = Depends(get_current_user),
     db: Database = Depends(get_db),
 ) -> dict:
-    filename, raw = _read_upload_with_limit(file, db)
-    parsed = _parse_novel_bytes(filename, raw, title)
+    filename, raw, max_bytes = _read_upload_with_limit(file, db)
+    parsed = _parse_novel_bytes(
+        filename,
+        raw,
+        title,
+        max_uncompressed_bytes=max(max_bytes * 3, 256 * 1024 * 1024),
+    )
     book_id = ingest_book(db, current_user.id, parsed, author_override=author)
     with db.session() as conn:
         row = _require_owned_book(conn, book_id, current_user.id)
@@ -184,8 +198,13 @@ def append_book(
         book = _require_owned_book(conn, book_id, current_user.id)
         existing_title = str(book["title"])
 
-    filename, raw = _read_upload_with_limit(file, db)
-    parsed = _parse_novel_bytes(filename, raw, existing_title)
+    filename, raw, max_bytes = _read_upload_with_limit(file, db)
+    parsed = _parse_novel_bytes(
+        filename,
+        raw,
+        existing_title,
+        max_uncompressed_bytes=max(max_bytes * 3, 256 * 1024 * 1024),
+    )
     result = append_book_chapters(db, book_id, parsed)
     with db.session() as conn:
         updated = _require_owned_book(conn, book_id, current_user.id)

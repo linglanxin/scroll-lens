@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import {
   FilePlus2,
   Lock,
@@ -9,8 +9,26 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 import { useChatStore } from "../../stores/chatStore";
+import {
+  DOC_ACCEPT,
+  DOC_FORMAT_SUMMARY,
+  NOVEL_ACCEPT,
+  NOVEL_FORMAT_SUMMARY,
+  hasDraggedFiles,
+  isSupportedNovelFile,
+} from "../common/fileFormats";
 
-export function LeftSidebar() {
+export interface DropNotice {
+  kind: "success" | "error";
+  text: string;
+}
+
+interface LeftSidebarProps {
+  onDragCleanup?: () => void;
+  onAppendDropNotice?: (notice: DropNotice) => void;
+}
+
+export function LeftSidebar({ onDragCleanup, onAppendDropNotice }: LeftSidebarProps = {}) {
   const {
     mode,
     books,
@@ -40,23 +58,100 @@ export function LeftSidebar() {
   const appendInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const [appendTargetId, setAppendTargetId] = useState<number | null>(null);
+  const [dragAppendBookId, setDragAppendBookId] = useState<number | null>(null);
 
   const activeBook = books.find((b) => b.id === selectedBookId) ?? null;
 
-  async function handleBookUpload(file: File | undefined) {
-    if (!file) return;
-    await uploadBook(file);
+  async function handleBookFilesUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    for (const file of Array.from(files)) {
+      try {
+        await uploadBook(file);
+      } catch {
+        // actionError in store displays the failure detail
+      }
+    }
   }
 
   async function handleAppendUpload(file: File | undefined) {
     if (!file || !appendTargetId) return;
-    await appendBook(appendTargetId, file);
-    setAppendTargetId(null);
+    const targetBook = books.find((b) => b.id === appendTargetId);
+    try {
+      const res = await appendBook(appendTargetId, file);
+      onAppendDropNotice?.({
+        kind: "success",
+        text:
+          res.appended_chapters > 0
+            ? `已为《${targetBook?.title ?? "书籍"}》追更追加 ${res.appended_chapters} 章`
+            : `《${targetBook?.title ?? "书籍"}》已是最新，未检测到新增章节`,
+      });
+    } catch {
+      // handled by store actionError
+    } finally {
+      setAppendTargetId(null);
+    }
   }
 
-  async function handleDocUpload(file: File | undefined) {
+  async function handleDocFilesUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    for (const file of Array.from(files)) {
+      try {
+        await uploadDoc(file);
+      } catch {
+        // handled by store actionError
+      }
+    }
+  }
+
+  function handleBookCardDragOver(e: DragEvent<HTMLDivElement>, bookId: number) {
+    if (mode !== "novel" || !hasDraggedFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    if (dragAppendBookId !== bookId) {
+      setDragAppendBookId(bookId);
+    }
+  }
+
+  function handleBookCardDragLeave(e: DragEvent<HTMLDivElement>, bookId: number) {
+    if (dragAppendBookId !== bookId) return;
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setDragAppendBookId(null);
+    }
+  }
+
+  async function handleBookCardDrop(
+    e: DragEvent<HTMLDivElement>,
+    bookId: number,
+    bookTitle: string
+  ) {
+    if (mode !== "novel" || !hasDraggedFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragAppendBookId(null);
+    onDragCleanup?.();
+
+    if (uploading) return;
+    const file = e.dataTransfer.files?.[0];
     if (!file) return;
-    await uploadDoc(file);
+    if (!isSupportedNovelFile(file.name)) {
+      onAppendDropNotice?.({
+        kind: "error",
+        text: `追更失败：不支持的格式「${file.name}」。支持：${NOVEL_FORMAT_SUMMARY}`,
+      });
+      return;
+    }
+    try {
+      const res = await appendBook(bookId, file);
+      onAppendDropNotice?.({
+        kind: "success",
+        text:
+          res.appended_chapters > 0
+            ? `已为《${bookTitle}》追更追加 ${res.appended_chapters} 章`
+            : `《${bookTitle}》已是最新，未检测到新增章节`,
+      });
+    } catch {
+      // handled by store actionError
+    }
   }
 
   return (
@@ -73,17 +168,18 @@ export function LeftSidebar() {
               <input
                 ref={bookInputRef}
                 type="file"
-                accept=".txt,.epub"
+                multiple
+                accept={NOVEL_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
-                  void handleBookUpload(e.target.files?.[0]);
+                  void handleBookFilesUpload(e.target.files);
                   e.target.value = "";
                 }}
               />
               <input
                 ref={appendInputRef}
                 type="file"
-                accept=".txt,.epub"
+                accept={NOVEL_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   void handleAppendUpload(e.target.files?.[0]);
@@ -95,6 +191,7 @@ export function LeftSidebar() {
                 disabled={uploading}
                 onClick={() => bookInputRef.current?.click()}
                 className="sl-btn flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-xs font-medium text-accent-fg disabled:opacity-50"
+                title={`支持 ${NOVEL_FORMAT_SUMMARY}（支持直接拖拽文件到窗口）`}
               >
                 <Upload className="h-3.5 w-3.5" />
                 <span>{uploading ? "解析中..." : "导入小说"}</span>
@@ -105,10 +202,11 @@ export function LeftSidebar() {
               <input
                 ref={docInputRef}
                 type="file"
-                accept=".pdf,.pptx,.docx,.md,.txt"
+                multiple
+                accept={DOC_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
-                  void handleDocUpload(e.target.files?.[0]);
+                  void handleDocFilesUpload(e.target.files);
                   e.target.value = "";
                 }}
               />
@@ -117,6 +215,7 @@ export function LeftSidebar() {
                 disabled={uploading}
                 onClick={() => docInputRef.current?.click()}
                 className="sl-btn flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-xs font-medium text-accent-fg disabled:opacity-50"
+                title={`支持 ${DOC_FORMAT_SUMMARY}（支持直接拖拽文件到窗口）`}
               >
                 <Upload className="h-3.5 w-3.5" />
                 <span>{uploading ? "解析中..." : "上传文档"}</span>
@@ -139,23 +238,32 @@ export function LeftSidebar() {
       <div className="max-h-[46%] overflow-y-auto p-2 space-y-1 border-b border-line">
         {mode === "novel" ? (
           books.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-ink-muted">
-              暂无小说，支持 TXT / EPUB
-            </p>
+            <div className="rounded-xl border border-dashed border-line px-3 py-5 text-center text-xs text-ink-muted space-y-1">
+              <p className="font-medium text-ink-secondary">暂无小说，可直接拖拽文件到此</p>
+              <p className="text-[11px] leading-relaxed">
+                支持 TXT / EPUB / MOBI / AZW3 / FB2 / PDF / DOCX / MD / HTML / ZIP
+              </p>
+            </div>
           ) : (
             books.map((book) => {
               const selected = book.id === selectedBookId;
+              const isDropTarget = dragAppendBookId === book.id;
               return (
                 <div
                   key={book.id}
                   onClick={() => selectBook(book.id)}
+                  onDragOver={(e) => handleBookCardDragOver(e, book.id)}
+                  onDragLeave={(e) => handleBookCardDragLeave(e, book.id)}
+                  onDrop={(e) => void handleBookCardDrop(e, book.id, book.title)}
                   className={`group relative cursor-pointer rounded-xl px-2.5 py-2 transition ${
-                    selected
+                    isDropTarget
+                      ? "bg-accent-soft ring-1 ring-accent text-ink"
+                      : selected
                       ? "bg-hover text-ink"
                       : "text-ink-secondary hover:bg-elevated hover:text-ink"
                   }`}
                 >
-                  {selected && (
+                  {selected && !isDropTarget && (
                     <span className="absolute left-1 top-2.5 bottom-2.5 w-0.5 rounded-full bg-accent" />
                   )}
                   <div className="flex items-start justify-between gap-2 pl-1.5">
@@ -163,10 +271,16 @@ export function LeftSidebar() {
                       <div className="truncate text-[13px] font-medium text-ink">
                         {book.title}
                       </div>
-                      <div className="sl-num mt-0.5 text-[11px] text-ink-muted">
-                        {book.total_volumes} 卷 · {book.total_chapters} 章 ·{" "}
-                        {(book.total_chars / 10000).toFixed(1)} 万字
-                      </div>
+                      {isDropTarget ? (
+                        <div className="mt-0.5 text-[11px] font-medium text-accent">
+                          松开即可增量追更此书
+                        </div>
+                      ) : (
+                        <div className="sl-num mt-0.5 text-[11px] text-ink-muted">
+                          {book.total_volumes} 卷 · {book.total_chapters} 章 ·{" "}
+                          {(book.total_chars / 10000).toFixed(1)} 万字
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button
@@ -177,7 +291,7 @@ export function LeftSidebar() {
                           appendInputRef.current?.click();
                         }}
                         className="rounded-md p-1.5 text-ink-secondary hover:bg-surface hover:text-ink"
-                        title="连载追更（增量追加）"
+                        title="连载追更（增量追加，也可直接拖文件到本书卡片）"
                       >
                         <FilePlus2 className="h-3.5 w-3.5" />
                       </button>
@@ -199,9 +313,12 @@ export function LeftSidebar() {
             })
           )
         ) : docs.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs text-ink-muted">
-            暂无文档，支持 PDF / PPTX / DOCX / MD / TXT
-          </p>
+          <div className="rounded-xl border border-dashed border-line px-3 py-5 text-center text-xs text-ink-muted space-y-1">
+            <p className="font-medium text-ink-secondary">暂无文档，可直接拖拽文件到此</p>
+            <p className="text-[11px] leading-relaxed">
+              支持 PDF / PPTX / DOCX / MD / TXT
+            </p>
+          </div>
         ) : (
           docs.map((doc) => {
             const selected = doc.id === selectedDocId;

@@ -19,7 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from app.config import Settings  # noqa: E402
 from app.db.database import Database  # noqa: E402
 from app.engines.novel.indexer import ingest_book  # noqa: E402
-from app.engines.novel.parser import parse_epub_novel, parse_txt_novel  # noqa: E402
+from app.engines.novel.parser import SUPPORTED_NOVEL_EXTENSIONS, parse_novel_bytes  # noqa: E402
 from app.engines.novel.search import get_keyword_timeline, search_chapters  # noqa: E402
 from app.llm.factory import test_provider_connection  # noqa: E402
 
@@ -27,8 +27,10 @@ from app.llm.factory import test_provider_connection  # noqa: E402
 def run_novel_smoke(novel_path: Path, keyword: str | None) -> dict:
     raw = novel_path.read_bytes()
     ext = novel_path.suffix.lower()
-    if ext not in (".txt", ".epub"):
-        raise ValueError(f"Unsupported novel extension: {ext}")
+    if ext not in SUPPORTED_NOVEL_EXTENSIONS:
+        raise ValueError(
+            f"Unsupported novel extension: {ext}. Supported: {', '.join(SUPPORTED_NOVEL_EXTENSIONS)}"
+        )
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
@@ -43,11 +45,7 @@ def run_novel_smoke(novel_path: Path, keyword: str | None) -> dict:
             uid = conn.execute("SELECT id FROM users WHERE username='smoke'").fetchone()["id"]
 
         t0 = time.perf_counter()
-        parsed = (
-            parse_epub_novel(raw, novel_path.stem)
-            if ext == ".epub"
-            else parse_txt_novel(raw, novel_path.stem)
-        )
+        parsed = parse_novel_bytes(novel_path.name, raw)
         t1 = time.perf_counter()
         book_id = ingest_book(db, uid, parsed)
         t2 = time.perf_counter()
@@ -88,7 +86,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="ScrollLens live smoke test for real novels and LLM providers."
     )
-    parser.add_argument("--novel", type=Path, help="Path to a real .txt or .epub novel file")
+    parser.add_argument(
+        "--novel",
+        type=Path,
+        help="Path to a real novel file (.txt/.epub/.mobi/.azw3/.fb2/.pdf/.docx/.md/.html/.zip)",
+    )
     parser.add_argument("--keyword", type=str, default=None, help="Optional keyword to benchmark search & timeline")
     parser.add_argument("--protocol", choices=["openai_compat", "anthropic", "gemini"], help="LLM protocol")
     parser.add_argument("--base-url", type=str, help="LLM API base URL")

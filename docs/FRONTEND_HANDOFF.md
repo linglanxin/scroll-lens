@@ -68,7 +68,7 @@ frontend/src/
 | 方法 & 路径 | 请求体 / 参数 | 说明与关键字段 |
 | :--- | :--- | :--- |
 | `GET /api/v1/books` | 无 | 返回 `Book[]`：`id, title, author, total_volumes, total_chapters, total_chars, read_progress_ch, created_at, updated_at` |
-| `POST /api/v1/books` | `multipart/form-data`: `file` (`.txt`/`.epub`), `title?`, `author?` | 入库解析原书分卷与章节，返回 `Book` |
+| `POST /api/v1/books` | `multipart/form-data`: `file` (`.txt`/`.epub`/`.mobi`/`.azw3`/`.azw`/`.fb2`/`.pdf`/`.docx`/`.md`/`.html`/`.zip`), `title?`, `author?` | 入库解析原书分卷与章节，返回 `Book` |
 | `GET /api/v1/books/{id}` | 无 | 返回 `Book` + `alias_count`, `wiki_count` |
 | `DELETE /api/v1/books/{id}` | 无 | 删除书籍、FTS5 索引及关联对话 |
 | `POST /api/v1/books/{id}/append` | `multipart/form-data`: `file` | 连载增量追更，返回 `{"appended_chapters", "new_total_chapters", "book"}` |
