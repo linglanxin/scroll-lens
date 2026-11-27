@@ -21,9 +21,16 @@ class ToolCall:
 
 
 @dataclass
+class ImageAttachment:
+    data: bytes
+    mime_type: str = "image/png"
+
+
+@dataclass
 class LLMMessage:
     role: str  # 'user' | 'assistant' | 'tool'
     content: str = ""
+    images: list[ImageAttachment] = field(default_factory=list)
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str | None = None
     tool_name: str | None = None

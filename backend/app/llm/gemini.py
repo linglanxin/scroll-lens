@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import uuid
 from typing import Any, AsyncIterator
@@ -44,6 +45,16 @@ class GeminiAdapter(BaseLLMAdapter):
                     out[-1]["parts"].append(part)
                 else:
                     out.append({"role": "user", "parts": [part]})
+            elif msg.images:
+                img_parts: list[dict[str, Any]] = []
+                for img in msg.images:
+                    b64 = base64.b64encode(img.data).decode("ascii")
+                    img_parts.append(
+                        {"inlineData": {"mimeType": img.mime_type, "data": b64}}
+                    )
+                if msg.content:
+                    img_parts.append({"text": msg.content})
+                out.append({"role": "user", "parts": img_parts})
             else:
                 out.append({"role": "user", "parts": [{"text": msg.content}]})
         return out

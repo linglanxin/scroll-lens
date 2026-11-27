@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import uuid
 from typing import Any, AsyncIterator
@@ -62,6 +63,19 @@ class OpenAICompatAdapter(BaseLLMAdapter):
                         "content": msg.content,
                     }
                 )
+            elif msg.images:
+                parts: list[dict[str, Any]] = []
+                if msg.content:
+                    parts.append({"type": "text", "text": msg.content})
+                for img in msg.images:
+                    b64 = base64.b64encode(img.data).decode("ascii")
+                    parts.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{img.mime_type};base64,{b64}"},
+                        }
+                    )
+                out.append({"role": msg.role, "content": parts})
             else:
                 out.append({"role": msg.role, "content": msg.content})
         return out

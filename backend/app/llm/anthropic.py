@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any, AsyncIterator
 
@@ -50,6 +51,23 @@ class AnthropicAdapter(BaseLLMAdapter):
                     out[-1]["content"].append(block)
                 else:
                     out.append({"role": "user", "content": [block]})
+            elif msg.images:
+                img_blocks: list[dict[str, Any]] = []
+                for img in msg.images:
+                    b64 = base64.b64encode(img.data).decode("ascii")
+                    img_blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": img.mime_type,
+                                "data": b64,
+                            },
+                        }
+                    )
+                if msg.content:
+                    img_blocks.append({"type": "text", "text": msg.content})
+                out.append({"role": msg.role, "content": img_blocks})
             else:
                 out.append({"role": msg.role, "content": msg.content})
         return out
