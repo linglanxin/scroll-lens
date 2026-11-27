@@ -11,12 +11,15 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 import { useAuthStore } from "../../stores/authStore";
+import { useChatStore } from "../../stores/chatStore";
 import { BrandLogo } from "../common/BrandLogo";
 
 export function TopBar() {
   const {
     mode,
     setMode,
+    novelTab,
+    setNovelTab,
     activeView,
     setActiveView,
     mobileView,
@@ -27,11 +30,11 @@ export function TopBar() {
     selectedDocId,
     theme,
     toggleTheme,
-    setMobileSidebarOpen,
     rightPanelOpen,
     setRightPanelOpen,
   } = useAppStore();
   const { user, logout } = useAuthStore();
+  const { chatView, sessions, openOverview, returnToChat } = useChatStore();
 
   const activeBook = books.find((b) => b.id === selectedBookId) ?? null;
   const activeDoc = docs.find((d) => d.id === selectedDocId) ?? null;
@@ -39,6 +42,15 @@ export function TopBar() {
     mode === "novel"
       ? (activeBook?.title ?? "未选择书籍")
       : (activeDoc?.filename ?? "未选择文档");
+
+  const mobileSubScreen: "cards" | "reader" | "history" | null =
+    mode === "novel" && novelTab === "cards"
+      ? "cards"
+      : mode === "novel" && novelTab === "reader"
+        ? "reader"
+        : chatView === "overview"
+          ? "history"
+          : null;
 
   return (
     <header className="shrink-0 border-b border-line bg-surface">
@@ -130,6 +142,33 @@ export function TopBar() {
               </button>
             </div>
           </>
+        ) : mobileSubScreen !== null ? (
+          <>
+            <div className="flex items-center gap-1 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (mobileSubScreen === "history") {
+                    returnToChat();
+                  } else {
+                    setNovelTab("chat");
+                  }
+                }}
+                className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl px-2 text-xs font-medium text-ink-secondary hover:bg-hover hover:text-ink"
+                aria-label="返回对话"
+              >
+                <ArrowLeft className="h-4 w-4 shrink-0" />
+                <span className="whitespace-nowrap">对话</span>
+              </button>
+              <span className="truncate text-sm font-semibold text-ink">
+                {mobileSubScreen === "history"
+                  ? `历史记录 · ${currentTitle}`
+                  : mobileSubScreen === "cards"
+                    ? "人物与势力图鉴"
+                    : "沉浸阅读 · 原文"}
+              </span>
+            </div>
+          </>
         ) : (
           <>
             <div className="flex items-center gap-1 min-w-0 flex-1">
@@ -147,36 +186,20 @@ export function TopBar() {
               </span>
             </div>
 
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div className="flex shrink-0 items-center">
               <button
                 type="button"
-                onClick={() => setMobileSidebarOpen(true)}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-ink"
-                title="历史对话与切换书籍"
-                aria-label="打开侧边栏"
+                onClick={openOverview}
+                className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-ink"
+                title="历史记录"
+                aria-label="打开历史记录"
               >
                 <History className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightPanelOpen(!rightPanelOpen)}
-                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                  rightPanelOpen
-                    ? "bg-accent-soft text-accent"
-                    : "text-ink-secondary hover:bg-hover hover:text-ink"
-                }`}
-                title="查阅分卷、原文、别名与设定"
-                aria-label="切换右侧面板"
-              >
-                <PanelRight className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveView("settings")}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-secondary hover:bg-hover hover:text-ink"
-                aria-label="模型与系统设置"
-              >
-                <Settings className="h-4 w-4" />
+                {sessions.length > 0 && (
+                  <span className="sl-num absolute right-1.5 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-accent-fg">
+                    {sessions.length > 99 ? "99+" : sessions.length}
+                  </span>
+                )}
               </button>
             </div>
           </>

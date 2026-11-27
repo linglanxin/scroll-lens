@@ -177,7 +177,7 @@ export function SessionHistoryOverview() {
       <div className="shrink-0 border-b border-line bg-surface/85 px-3 sm:px-6 py-3.5">
         <div className="mx-auto flex max-w-[820px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-2">
               <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
                 {mode === "novel" ? (
                   <BookOpen className="h-3.5 w-3.5" />
@@ -303,7 +303,21 @@ export function SessionHistoryOverview() {
           )}
 
           {/* Session Cards */}
-          {filteredSessions.length === 0 ? (
+          {sessions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line bg-surface px-5 py-10 text-center">
+              <p className="text-xs text-ink-muted">
+                当前{mode === "novel" ? "书籍" : "文档"}暂无历史对话记录
+              </p>
+              <button
+                type="button"
+                onClick={newSession}
+                className="sl-btn mt-3 inline-flex h-9 items-center gap-1.5 rounded-xl bg-accent px-3.5 text-xs font-medium text-accent-fg"
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" />
+                <span>返回开始新对话</span>
+              </button>
+            </div>
+          ) : filteredSessions.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line bg-surface px-5 py-10 text-center text-xs text-ink-muted">
               未找到匹配「{searchQuery}」的历史会话或问题
             </div>
@@ -508,8 +522,8 @@ export function SessionHistoryOverview() {
         </div>
       </div>
 
-      {/* Bottom Quick New-Chat Composer */}
-      <div className="px-3 sm:px-6 pt-1 pb-[max(1rem,calc(0.75rem+env(safe-area-inset-bottom)))] shrink-0 bg-canvas">
+      {/* Bottom Quick New-Chat Composer (Desktop only; Mobile uses dedicated chat view) */}
+      <div className="hidden md:block px-3 sm:px-6 pt-1 pb-[max(1rem,calc(0.75rem+env(safe-area-inset-bottom)))] shrink-0 bg-canvas">
         <PromptBar
           activeBook={activeBook}
           activeDoc={activeDoc}

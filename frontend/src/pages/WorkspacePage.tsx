@@ -280,7 +280,7 @@ export function WorkspacePage() {
           </div>
         )}
         {mode === "novel" && selectedBookId !== null && (
-          <div className="flex items-center justify-between border-b border-line bg-surface/90 px-3 sm:px-6 py-1.5 shrink-0">
+          <div className="hidden md:flex items-center justify-between border-b border-line bg-surface/90 px-3 sm:px-6 py-1.5 shrink-0">
             <div className="inline-flex items-center rounded-xl border border-line bg-elevated p-0.5 text-xs">
               {(
                 [

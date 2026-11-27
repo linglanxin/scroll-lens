@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
 import { useAuthStore } from "../../stores/authStore";
+import { useChatStore } from "../../stores/chatStore";
 import { BookCover } from "../common/BookCover";
 import {
   DOC_ACCEPT,
@@ -37,8 +38,10 @@ export function MobileBookshelf() {
     uploadDoc,
     deleteDoc,
     setMobileView,
+    setNovelTab,
   } = useAppStore();
   const { user, logout } = useAuthStore();
+  const { newSession } = useChatStore();
 
   const bookInputRef = useRef<HTMLInputElement>(null);
   const appendInputRef = useRef<HTMLInputElement>(null);
@@ -98,6 +101,8 @@ export function MobileBookshelf() {
     setMenuItemId(null);
     setConfirmDeleteId(null);
     selectBook(bookId);
+    setNovelTab("chat");
+    newSession();
     setMobileView("workspace");
   }
 
@@ -105,6 +110,7 @@ export function MobileBookshelf() {
     setMenuItemId(null);
     setConfirmDeleteId(null);
     selectDoc(docId);
+    newSession();
     setMobileView("workspace");
   }
 

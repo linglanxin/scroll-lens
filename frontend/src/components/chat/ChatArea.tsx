@@ -13,6 +13,7 @@ import {
   ChevronsUpDown,
   Copy,
   FileText,
+  History,
   Loader2,
   MessageSquarePlus,
   ScanEye,
@@ -20,6 +21,7 @@ import {
   Upload,
   UserPlus,
   Wrench,
+  X,
 } from "lucide-react";
 import { booksApi } from "../../api/books";
 import { documentsApi } from "../../api/documents";
@@ -213,6 +215,7 @@ export function ChatArea() {
     activeSessionId,
     chatView,
     loadingSessions,
+    mobileEntryNonce,
     focusMessageId,
     summarizingIds,
     messages,
@@ -223,6 +226,7 @@ export function ChatArea() {
     streamingCitations,
     error,
     openOverview,
+    selectSession,
     clearFocusMessage,
     newSession,
     summarizeSession,
@@ -240,6 +244,7 @@ export function ChatArea() {
   const [highlightedMsgId, setHighlightedMsgId] = useState<number | null>(null);
   const [bookCards, setBookCards] = useState<NovelCard[]>([]);
   const [copiedMsgId, setCopiedMsgId] = useState<number | null>(null);
+  const [resumeDismissed, setResumeDismissed] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const emptyUploadRef = useRef<HTMLInputElement>(null);
@@ -260,6 +265,10 @@ export function ChatArea() {
     setOcrFeedback(null);
     setOcrBusy(false);
   }, [selectedDocId]);
+
+  useEffect(() => {
+    setResumeDismissed(false);
+  }, [mode, targetId, mobileEntryNonce]);
 
   useEffect(() => {
     if (mode === "novel" && selectedBookId) {
@@ -652,12 +661,18 @@ export function ChatArea() {
         </div>
       );
     }
-    if (sessions.length > 0) {
-      return <SessionHistoryOverview />;
-    }
+    return <SessionHistoryOverview />;
   }
 
   const starters = mode === "novel" ? NOVEL_STARTERS : DOC_STARTERS;
+  const latestSession = sessions[0] ?? null;
+  const showMobileResumePopup =
+    activeSessionId === null &&
+    messages.length === 0 &&
+    !isStreaming &&
+    !loadingSessions &&
+    latestSession !== null &&
+    !resumeDismissed;
   const allTurnsCollapsed =
     turns.length >= 2 && turns.every((t) => Boolean(collapsedTurns[t.userMsg.id]));
   const isSummarizingActive = Boolean(
@@ -675,15 +690,19 @@ export function ChatArea() {
 
   return (
     <section className="flex flex-1 flex-col min-w-0 min-h-0 bg-canvas">
-      {/* Chat Context & Folding Bar */}
+      {/* Chat Context & Folding Bar (hidden on mobile when fresh empty chat to keep WeChat/Telegram cleanliness) */}
       {(sessions.length > 0 || messages.length > 0) && (
-        <div className="flex items-center justify-between gap-2 border-b border-line bg-surface/85 px-3 sm:px-6 py-2 shrink-0">
+        <div
+          className={`${
+            messages.length === 0 ? "hidden md:flex" : "flex"
+          } items-center justify-between gap-2 border-b border-line bg-surface/85 px-3 sm:px-6 py-2 shrink-0`}
+        >
           <div className="flex items-center gap-2 min-w-0">
             {sessions.length > 0 && (
               <button
                 type="button"
                 onClick={openOverview}
-                className="sl-btn inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-line bg-elevated px-2.5 text-xs font-medium text-ink-secondary hover:border-accent hover:text-accent"
+                className="sl-btn hidden md:inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-line bg-elevated px-2.5 text-xs font-medium text-ink-secondary hover:border-accent hover:text-accent"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 <span>历史对话 ({sessions.length})</span>
@@ -818,35 +837,67 @@ export function ChatArea() {
       {/* Messages Stage */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 sm:px-6 py-5 space-y-4">
         {messages.length === 0 && !isStreaming && (
-          <div className="mx-auto max-w-[780px] pt-6 pb-4">
-            <div className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
-              <div className="flex items-center gap-2.5">
-                <Sparkles className="h-4 w-4 text-accent" />
-                <h2 className="text-sm font-semibold text-ink">
+          <>
+            {/* Desktop Empty Welcome Card (>= md) */}
+            <div className="hidden md:block mx-auto max-w-[780px] pt-6 pb-4">
+              <div className="rounded-2xl border border-line bg-surface p-5 sm:p-6">
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="h-4 w-4 text-accent" />
+                  <h2 className="text-sm font-semibold text-ink">
+                    {mode === "novel"
+                      ? `已载入《${activeBook?.title ?? ""}》`
+                      : `已载入《${activeDoc?.filename ?? ""}》`}
+                  </h2>
+                </div>
+                <p className="mt-1.5 text-xs text-ink-secondary leading-relaxed">
                   {mode === "novel"
-                    ? `已载入《${activeBook?.title ?? ""}》`
-                    : `已载入《${activeDoc?.filename ?? ""}》`}
-                </h2>
+                    ? `当前防剧透进度锁位于第 ${activeBook?.read_progress_ch ?? 0} 章。点击下方示例或输入 / 使用指令模板：`
+                    : "所有回答都会附带 [p:页码] 引用，点击即可在右侧直接展开对应页正文："}
+                </p>
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {starters.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setDraft(s)}
+                      className="sl-btn rounded-xl border border-line bg-elevated/70 p-3 text-left text-xs leading-relaxed text-ink-secondary hover:border-accent hover:text-ink"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <p className="mt-1.5 text-xs text-ink-secondary leading-relaxed">
-                {mode === "novel"
-                  ? `当前防剧透进度锁位于第 ${activeBook?.read_progress_ch ?? 0} 章。点击下方示例或输入 / 使用指令模板：`
-                  : "所有回答都会附带 [p:页码] 引用，点击即可在右侧直接展开对应页正文："}
-              </p>
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            </div>
+
+            {/* Mobile Clean WeChat/Telegram-style Empty Chat Stage (< md) */}
+            <div className="md:hidden flex min-h-full flex-col justify-center px-2 py-6">
+              <div className="text-center">
+                <p className="text-[15px] font-semibold text-ink">
+                  {mode === "novel"
+                    ? `《${activeBook?.title ?? ""}》`
+                    : (activeDoc?.filename ?? "")}
+                </p>
+                <p className="sl-num mt-1 text-xs text-ink-muted">
+                  {mode === "novel" && activeBook
+                    ? `已锁至第 ${activeBook.read_progress_ch} / ${activeBook.total_chapters} 章 · 点左下角 + 使用人物卡与看原文`
+                    : "直接发送问题，或点左下角 + 呼出工具"}
+                </p>
+              </div>
+
+              <div className="mt-5 space-y-2">
                 {starters.map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setDraft(s)}
-                    className="sl-btn rounded-xl border border-line bg-elevated/70 p-3 text-left text-xs leading-relaxed text-ink-secondary hover:border-accent hover:text-ink"
+                    className="w-full rounded-2xl border border-line bg-surface/90 px-3.5 py-2.5 text-left text-xs leading-relaxed text-ink-secondary active:border-accent active:text-ink"
                   >
                     {s}
                   </button>
                 ))}
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {turns.map((turn, idx) => {
@@ -1016,8 +1067,47 @@ export function ChatArea() {
         </div>
       )}
 
-      {/* Floating React Bits-inspired PromptBar */}
-      <div className="px-3 sm:px-6 pt-1 pb-[max(1rem,calc(0.75rem+env(safe-area-inset-bottom)))] shrink-0 bg-canvas">
+      {/* Mobile Floating "Resume Last Conversation" Popup Entry */}
+      {showMobileResumePopup && latestSession && (
+        <div className="md:hidden shrink-0 px-3 pb-2 bg-canvas">
+          <div className="flex items-center gap-2.5 rounded-2xl border border-line-strong bg-surface px-3 py-2.5 shadow-md">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+              <History className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-ink-secondary">
+                <span>有未继续的上次对话</span>
+                {(latestSession.question_count ?? 0) > 0 && (
+                  <span className="sl-num text-ink-muted">
+                    · {latestSession.question_count} 问
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 truncate text-xs font-medium text-ink">
+                {latestSession.summary || latestSession.title}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void selectSession(latestSession.id)}
+              className="inline-flex h-8 shrink-0 items-center rounded-xl bg-accent px-3 text-xs font-medium text-accent-fg"
+            >
+              回到上次对话
+            </button>
+            <button
+              type="button"
+              onClick={() => setResumeDismissed(true)}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink-muted hover:bg-hover hover:text-ink"
+              aria-label="关闭上次对话提示"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Desktop PromptBar / Flush WeChat-style Mobile Composer */}
+      <div className="p-0 md:px-6 md:pt-1 md:pb-4 shrink-0 bg-canvas">
         <PromptBar
           activeBook={activeBook}
           activeDoc={activeDoc}

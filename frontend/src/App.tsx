@@ -51,8 +51,8 @@ export function App() {
       }
       if (window.innerWidth < 768 && state.mobileView === "workspace") {
         const chatState = useChatStore.getState();
-        if (chatState.chatView === "chat" && chatState.sessions.length > 0) {
-          chatState.openOverview();
+        if (chatState.chatView === "overview") {
+          chatState.returnToChat();
           return true;
         }
         state.setMobileView("shelf");

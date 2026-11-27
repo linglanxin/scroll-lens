@@ -18,6 +18,7 @@ interface ChatState {
   chatView: ChatViewMode;
   loadingSessions: boolean;
   loadedTargetKey: string | null;
+  mobileEntryNonce: number;
   focusMessageId: number | null;
   summarizingIds: Record<number, boolean>;
   messages: ChatMessage[];
@@ -31,6 +32,7 @@ interface ChatState {
 
   loadSessions: (mode: AppMode, targetId: number | null) => Promise<void>;
   openOverview: () => void;
+  returnToChat: () => void;
   selectSession: (sessionId: number, focusMessageId?: number | null) => Promise<void>;
   clearFocusMessage: () => void;
   newSession: () => void;
@@ -59,6 +61,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   chatView: "overview",
   loadingSessions: false,
   loadedTargetKey: null,
+  mobileEntryNonce: 0,
   focusMessageId: null,
   summarizingIds: {},
   messages: [],
@@ -87,19 +90,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const nextKey = `${mode}:${targetId}`;
     const targetChanged = get().loadedTargetKey !== nextKey;
+    const isMobileViewport =
+      typeof window !== "undefined" && window.innerWidth < 768;
 
     if (targetChanged) {
       get().stopStreaming();
-      set({
+      set((s) => ({
         loadedTargetKey: nextKey,
+        mobileEntryNonce: s.mobileEntryNonce + 1,
         loadingSessions: true,
         sessions: [],
         activeSessionId: null,
-        chatView: "overview",
+        chatView: isMobileViewport ? "chat" : "overview",
         focusMessageId: null,
         messages: [],
         error: null,
-      });
+      }));
     }
 
     try {
@@ -111,7 +117,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set({
           sessions,
           activeSessionId: null,
-          chatView: sessions.length > 0 ? "overview" : "chat",
+          chatView: isMobileViewport
+            ? "chat"
+            : sessions.length > 0
+              ? "overview"
+              : "chat",
           loadingSessions: false,
           messages: [],
         });
@@ -143,6 +153,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
+  returnToChat: () => {
+    set({
+      chatView: "chat",
+      error: null,
+    });
+  },
+
   selectSession: async (sessionId, focusMessageId) => {
     get().stopStreaming();
     const switchingSession = get().activeSessionId !== sessionId;
@@ -167,9 +184,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   newSession: () => {
     get().stopStreaming();
-    set({
+    set((s) => ({
       activeSessionId: null,
       chatView: "chat",
+      mobileEntryNonce: s.mobileEntryNonce + 1,
       focusMessageId: null,
       messages: [],
       streamingText: "",
@@ -177,7 +195,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingCards: [],
       streamingCitations: [],
       error: null,
-    });
+    }));
   },
 
   renameSession: async (sessionId, title) => {
