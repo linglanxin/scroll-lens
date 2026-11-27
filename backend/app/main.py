@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import admin, auth, books, chat, documents, providers
 from app.config import Settings, get_settings
 from app.db.database import Database
+from app.engines.document.vision_ocr import VisionOcrManager
 from app.engines.novel.volume_summarizer import VolumeSummarizerManager
 
 
@@ -19,6 +20,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     cfg = settings or get_settings()
     db = Database(cfg.resolved_db_path())
     summarizer = VolumeSummarizerManager()
+    vision_ocr = VisionOcrManager()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -26,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db.init_schema(cfg)
         yield
         await summarizer.shutdown()
+        await vision_ocr.shutdown()
 
     app = FastAPI(
         title="ScrollLens (卷镜) API",
@@ -35,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = cfg
     app.state.db = db
     app.state.summarizer = summarizer
+    app.state.vision_ocr = vision_ocr
 
     app.add_middleware(
         CORSMiddleware,

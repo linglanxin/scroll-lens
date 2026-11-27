@@ -37,9 +37,13 @@ if [ ! -f "${DEPLOY_DIR}/.env" ]; then
   echo "Generated new APP_SECRET_KEY in ${DEPLOY_DIR}/.env"
 fi
 
-mkdir -p "${BACKEND_DIR}/data"
+mkdir -p "${BACKEND_DIR}/data/doc_scanned"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${BACKEND_DIR}/data" "${DEPLOY_DIR}/.env"
 chmod 600 "${DEPLOY_DIR}/.env"
+
+if [ ! -f "${APP_DIR}/frontend/dist/index.html" ]; then
+  echo "Warning: ${APP_DIR}/frontend/dist/index.html not found. Upload locally built frontend/dist/ so FastAPI can serve the Web UI." >&2
+fi
 
 echo "==> Installing systemd service..."
 cp "${DEPLOY_DIR}/scroll-lens.service" /etc/systemd/system/scroll-lens.service

@@ -20,7 +20,7 @@
 ### 2. 日常办公与学习文档引擎
 - **多格式纯文字解析**：原生支持 `PDF`（PyMuPDF）、`PPTX`（含表格与演讲者备注）、`DOCX`（含表格）、`Markdown` 与 `TXT`。
 - **大小文档智能分流**：`< 40,000` 字小文档全文无损直读；`≥ 40,000` 字自动切换分页 FTS5 + Agent 工具检索，回答附带 `[p:页码]` 溯源。
-- **疑似扫描页检测与 v1.1 扩展点**：自动计算每页文字密度 `text_density`，标记低字数含图页并在界面温和提示；底层预留 `BasePageExtractor.extract_with_vision()` 钩子，便于后续接入多模态视觉 OCR。
+- **疑似扫描页检测与多模态视觉 OCR**：自动计算每页文字密度 `text_density`，标记低字数含图页并缓存扫描页图像；支持直接调用用户已配置的多模态视觉模型（OpenAI 兼容 / Anthropic / Gemini 原生三协议均支持）按页或批量异步执行 OCR 识图，识别结果自动回写正文与 FTS5 索引。
 
 ### 3. 多模型与中转站适配（BYOK）
 - **三协议原生流式支持**：基于异步 `httpx` 原生实现 `OpenAI 兼容`（DeepSeek / ChatGPT / 通义千问 / 硅基流动 / OpenRouter / One-API / New-API 等中转站）、`Anthropic 原生`（Claude）与 `Google Gemini 原生`。

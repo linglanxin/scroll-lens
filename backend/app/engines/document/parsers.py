@@ -22,6 +22,59 @@ def _first_heading(text: str, fallback: str) -> str:
     return fallback
 
 
+def _render_pdf_page_image(page) -> tuple[bytes | None, str]:
+    try:
+        rect = page.rect
+        max_dim = max(rect.width, rect.height, 1.0)
+        # Target <= 1440px on the longest side to keep disk & token usage compact
+        scale = min(2.0, 1440.0 / max_dim)
+        import pymupdf
+
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+        return pix.tobytes("png"), "image/png"
+    except Exception:
+        return None, "image/png"
+
+
+def _compose_pptx_slide_images(blobs: list[bytes]) -> tuple[bytes | None, str]:
+    if not blobs:
+        return None, "image/png"
+    try:
+        from PIL import Image
+
+        opened: list[Image.Image] = []
+        for raw_blob in blobs[:4]:
+            try:
+                im = Image.open(io.BytesIO(raw_blob)).convert("RGB")
+                if im.width > 1440:
+                    ratio = 1440.0 / im.width
+                    im = im.resize((1440, max(1, int(im.height * ratio))))
+                opened.append(im)
+            except Exception:
+                continue
+        if not opened:
+            return None, "image/png"
+        if len(opened) == 1:
+            buf = io.BytesIO()
+            opened[0].save(buf, format="PNG", optimize=True)
+            return buf.getvalue(), "image/png"
+
+        total_w = max(im.width for im in opened)
+        total_h = sum(im.height for im in opened) + 12 * (len(opened) - 1)
+        canvas = Image.new("RGB", (total_w, min(total_h, 4096)), color=(255, 255, 255))
+        y = 0
+        for im in opened:
+            if y >= canvas.height:
+                break
+            canvas.paste(im, (0, y))
+            y += im.height + 12
+        buf = io.BytesIO()
+        canvas.save(buf, format="PNG", optimize=True)
+        return buf.getvalue(), "image/png"
+    except Exception:
+        return blobs[0], "image/png"
+
+
 class PdfExtractor(BasePageExtractor):
     def extract_pages(self, raw: bytes, filename: str) -> list[PageData]:
         import pymupdf
@@ -36,6 +89,9 @@ class PdfExtractor(BasePageExtractor):
                 area_units = max(1.0, (rect.width * rect.height) / 10000.0)
                 density = round(char_count / area_units, 3)
                 is_scanned = char_count < 20 and has_images
+                scanned_img, scanned_mime = (
+                    _render_pdf_page_image(page) if is_scanned else (None, "image/png")
+                )
                 heading = _first_heading(text, f"第 {idx} 页" + (" [疑似扫描页]" if is_scanned else ""))
                 pages.append(
                     PageData(
@@ -45,6 +101,8 @@ class PdfExtractor(BasePageExtractor):
                         char_count=char_count,
                         text_density=density,
                         is_scanned_suspect=is_scanned,
+                        scanned_image=scanned_img,
+                        scanned_image_mime=scanned_mime,
                     )
                 )
         return pages
@@ -62,6 +120,7 @@ class PptxExtractor(BasePageExtractor):
             title_text = ""
             has_picture = False
             has_text_box_content = False
+            picture_blobs: list[bytes] = []
 
             if slide.shapes.title and slide.shapes.title.has_text_frame:
                 title_text = slide.shapes.title.text_frame.text.strip()
@@ -69,6 +128,10 @@ class PptxExtractor(BasePageExtractor):
             for shape in slide.shapes:
                 if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                     has_picture = True
+                    try:
+                        picture_blobs.append(shape.image.blob)
+                    except Exception:
+                        pass
                 if shape.has_text_frame:
                     t = shape.text_frame.text.strip()
                     if t:
@@ -92,6 +155,11 @@ class PptxExtractor(BasePageExtractor):
             content = "\n".join(parts).strip()
             char_count = _non_ws_len(content)
             is_scanned = (not has_text_box_content and has_picture) or (char_count < 20 and has_picture)
+            scanned_img, scanned_mime = (
+                _compose_pptx_slide_images(picture_blobs)
+                if is_scanned and picture_blobs
+                else (None, "image/png")
+            )
             density = round(char_count / 500.0, 4)
             heading = title_text[:80] if title_text else _first_heading(
                 content, f"幻灯片 {idx}" + (" [疑似纯图页]" if is_scanned else "")
@@ -104,6 +172,8 @@ class PptxExtractor(BasePageExtractor):
                     char_count=char_count,
                     text_density=density,
                     is_scanned_suspect=is_scanned,
+                    scanned_image=scanned_img,
+                    scanned_image_mime=scanned_mime,
                 )
             )
         return pages

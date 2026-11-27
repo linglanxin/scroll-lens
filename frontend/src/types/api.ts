@@ -151,7 +151,18 @@ export interface DocPageOutline {
 }
 
 export interface DocumentDetail extends DocumentItem {
+  has_ocr_assets?: boolean;
   pages_outline: DocPageOutline[];
+}
+
+export interface DocOcrStatus {
+  running: boolean;
+  total_pages: number;
+  completed_pages: number;
+  failed_pages: number;
+  current_page: number | null;
+  last_error: string;
+  has_ocr_assets: boolean;
 }
 
 export interface DocPageDetail {

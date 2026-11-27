@@ -151,10 +151,112 @@ def test_pdf_pptx_docx_md_extraction_and_scanned_flags(app_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_vision_ocr_hook_reserved() -> None:
-    from app.engines.document.parsers import PdfExtractor
+async def test_vision_ocr_multimodal_adapters_and_end_to_end(app_client, monkeypatch) -> None:
+    import asyncio
 
+    from app.engines.document.parsers import PdfExtractor
+    from app.llm.anthropic import AnthropicAdapter
+    from app.llm.base import BaseLLMAdapter, ImageAttachment, LLMMessage, StreamEvent
+    from app.llm.gemini import GeminiAdapter
+    from app.llm.openai_compat import OpenAICompatAdapter
+
+    # 1. Verify all 3 protocol adapters serialize multimodal ImageAttachment properly
+    img_msg = [LLMMessage(role="user", content="OCR this", images=[ImageAttachment(data=b"PNGDATA", mime_type="image/png")])]
+    oai_fmt = OpenAICompatAdapter._format_messages(img_msg, "")
+    assert isinstance(oai_fmt[0]["content"], list)
+    assert oai_fmt[0]["content"][1]["type"] == "image_url"
+    assert oai_fmt[0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+    anth_fmt = AnthropicAdapter._format_messages(img_msg)
+    assert anth_fmt[0]["content"][0]["type"] == "image"
+    assert anth_fmt[0]["content"][0]["source"]["media_type"] == "image/png"
+
+    gem_fmt = GeminiAdapter._format_contents(img_msg)
+    assert "inlineData" in gem_fmt[0]["parts"][0]
+    assert gem_fmt[0]["parts"][0]["inlineData"]["mimeType"] == "image/png"
+
+    # 2. Verify extract_with_vision validates provider and invokes complete_once
     extractor = PdfExtractor()
     assert isinstance(extractor, BasePageExtractor)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         await extractor.extract_with_vision(b"fake-img", None)
+
+    class FakeVisionAdapter(BaseLLMAdapter):
+        async def stream_chat(self, messages, tools=None, system_prompt="", temperature=0.3):
+            assert len(messages) == 1 and len(messages[0].images) == 1
+            yield StreamEvent(
+                type="text_delta",
+                text="扫描页标题\n本页视觉 OCR 识别结果：2026年净利润增长48%，关键指标QuantumVisionVerified。",
+            )
+            yield StreamEvent(type="done", finish_reason="stop")
+
+        async def fetch_models(self):
+            return ["fake-vision"]
+
+    # 3. End-to-end API flow on scanned PDF
+    client, app = app_client
+    hdr = _register_alice(client)
+    prov_resp = client.post(
+        "/api/v1/providers",
+        headers=hdr,
+        json={
+            "name": "VisionModel",
+            "protocol": "openai_compat",
+            "base_url": "https://mock.local/v1",
+            "api_key": "sk-vision-test",
+            "model_name": "gpt-4o-mini",
+            "is_default": True,
+        },
+    )
+    assert prov_resp.status_code == 201
+
+    pdf_resp = client.post(
+        "/api/v1/docs",
+        headers=hdr,
+        files={"file": ("scanned_report.pdf", _make_sample_pdf(), "application/pdf")},
+    )
+    assert pdf_resp.status_code == 201
+    doc_id = pdf_resp.json()["id"]
+
+    detail_before = client.get(f"/api/v1/docs/{doc_id}", headers=hdr).json()
+    assert detail_before["has_scanned_pages"] is True
+    assert detail_before["has_ocr_assets"] is True
+
+    monkeypatch.setattr(
+        "app.engines.document.vision_ocr.create_adapter",
+        lambda **kwargs: FakeVisionAdapter("https://mock.local/v1", "sk", "gpt-4o-mini"),
+    )
+
+    ocr_resp = client.post(f"/api/v1/docs/{doc_id}/ocr", headers=hdr, json={})
+    assert ocr_resp.status_code == 200, ocr_resp.text
+    assert ocr_resp.json()["queued_pages"] == [2]
+
+    # Wait for background OCR task to finish
+    for _ in range(40):
+        st = client.get(f"/api/v1/docs/{doc_id}/ocr-status", headers=hdr).json()
+        if not st["running"]:
+            break
+        await asyncio.sleep(0.05)
+
+    assert st["running"] is False
+    assert st["completed_pages"] == 1
+    assert st["failed_pages"] == 0
+
+    detail_after = client.get(f"/api/v1/docs/{doc_id}", headers=hdr).json()
+    assert detail_after["has_scanned_pages"] is False
+    assert detail_after["scanned_page_count"] == 0
+
+    page2_after = client.get(f"/api/v1/docs/{doc_id}/pages/2", headers=hdr).json()
+    assert page2_after["is_scanned_suspect"] is False
+    assert "QuantumVisionVerified" in page2_after["content"]
+
+    with app.state.db.session() as conn:
+        hits = search_doc_pages(conn, doc_id, ["QuantumVisionVerified"])
+        assert len(hits) == 1
+        assert hits[0]["page_num"] == 2
+
+    # Deleting doc cleans up cached scanned page images
+    del_resp = client.delete(f"/api/v1/docs/{doc_id}", headers=hdr)
+    assert del_resp.status_code == 200
+    scanned_dir = app.state.settings.resolved_data_dir() / "doc_scanned" / str(doc_id)
+    assert not scanned_dir.exists()

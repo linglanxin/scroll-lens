@@ -95,11 +95,14 @@ frontend/src/
 | :--- | :--- | :--- |
 | `GET /api/v1/docs` | 无 | 文档列表：`id, filename, file_type, total_pages, total_chars, has_scanned_pages, scanned_page_count, retrieval_mode ("direct"\|"paginated_fts"), created_at` |
 | `POST /api/v1/docs` | `multipart/form-data`: `file` (`.pdf`/`.pptx`/`.docx`/`.md`/`.txt`) | 解析分页并检测疑似扫描页，返回文档对象 |
-| `GET /api/v1/docs/{id}` | 无 | 文档详情 + `pages_outline: [{page_num, heading, char_count, text_density, is_scanned_suspect}]` |
-| `DELETE /api/v1/docs/{id}` | 无 | 删除文档及关联对话 |
+| `GET /api/v1/docs/{id}` | 无 | 文档详情 + `has_ocr_assets` + `pages_outline: [{page_num, heading, char_count, text_density, is_scanned_suspect}]` |
+| `DELETE /api/v1/docs/{id}` | 无 | 删除文档、扫描页缓存及关联对话 |
 | `GET /api/v1/docs/{id}/pages/{page_num}` | 无 | 获取指定页正文与密度信息 |
+| `POST /api/v1/docs/{id}/ocr` | `{provider_id?, page_nums?}` | 异步触发扫描页多模态视觉 OCR（全量或指定页码），完成后自动更新正文与 FTS5 |
+| `GET /api/v1/docs/{id}/ocr-status` | 无 | 查询 OCR 进度：`{running, total_pages, completed_pages, failed_pages, current_page, last_error, has_ocr_assets}` |
+| `POST /api/v1/docs/{id}/ocr-cancel` | 无 | 取消运行中的视觉 OCR 任务 |
 
-> 当 `has_scanned_pages === true` 时，建议前端在文档顶部展示温和提示条：「检测到 `{scanned_page_count}` 页疑似扫描图/纯图页，当前版本仅解析纯文字（视觉识图将在后续版本开放）」。
+> 当 `has_scanned_pages === true` 时，前端在文档顶部与右侧面板提供一键多模态视觉 OCR 识图按钮与实时进度提示。
 
 ### 4.4 模型与中转站 (`/api/v1/providers`)
 

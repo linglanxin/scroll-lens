@@ -20,7 +20,7 @@
 ### 2. Everyday Document Engine
 - **Multi-Format Plain-Text Parsing**: Native support for `PDF` (PyMuPDF), `PPTX` (including tables & speaker notes), `DOCX` (including tables), `Markdown`, and `TXT`.
 - **Smart Context Routing**: Documents under `40,000` characters are injected losslessly into context; larger documents automatically switch to paginated FTS5 + Agent retrieval with clickable `[p:N]` page citations.
-- **Scanned-Page Detection & v1.1 Vision Hook**: Computes per-page `text_density`, flags low-text image pages in the UI, and reserves `BasePageExtractor.extract_with_vision()` for future multimodal OCR.
+- **Scanned-Page Detection & Multimodal Vision OCR**: Automatically computes per-page `text_density`, flags low-text image pages, caches rendered scanned-page images, and supports one-click single-page or batch async OCR via any user-configured multimodal LLM (OpenAI-compatible, Anthropic, or Gemini), updating page text and FTS5 indexes automatically.
 
 ### 3. Multi-Protocol LLM Layer (BYOK)
 - **Three Native Streaming Protocols**: Built on async `httpx` supporting `OpenAI-compatible` endpoints (DeepSeek, ChatGPT, Qwen, SiliconFlow, OpenRouter, One-API / New-API relays), `Anthropic` native (Claude), and `Google Gemini` native.

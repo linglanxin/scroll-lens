@@ -9,10 +9,12 @@ import {
   ChevronRight,
   FileText,
   Loader2,
+  ScanEye,
   Sparkles,
   Upload,
   Wrench,
 } from "lucide-react";
+import { documentsApi } from "../../api/documents";
 import { useAppStore } from "../../stores/appStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useReaderStore } from "../../stores/readerStore";
@@ -116,6 +118,7 @@ export function ChatArea() {
     setActiveView,
     uploadBook,
     uploadDoc,
+    refreshDocs,
     uploading,
   } = useAppStore();
 
@@ -134,12 +137,19 @@ export function ChatArea() {
   const { openChapter, openDocPage } = useReaderStore();
 
   const [draft, setDraft] = useState("");
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrFeedback, setOcrFeedback] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const emptyUploadRef = useRef<HTMLInputElement>(null);
 
   const activeBook = books.find((b) => b.id === selectedBookId) ?? null;
   const activeDoc = docs.find((d) => d.id === selectedDocId) ?? null;
   const targetId = mode === "novel" ? selectedBookId : selectedDocId;
+
+  useEffect(() => {
+    setOcrFeedback(null);
+    setOcrBusy(false);
+  }, [selectedDocId]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -331,11 +341,60 @@ export function ChatArea() {
     <section className="flex flex-1 flex-col min-w-0 min-h-0 bg-canvas">
       {/* Document Scanned Pages Banner */}
       {mode === "document" && activeDoc?.has_scanned_pages && (
-        <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs text-warning shrink-0">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>
-            检测到 {activeDoc.scanned_page_count} 页疑似扫描图/纯图页，当前版本仅解析纯文字（视觉识图将在后续版本开放）。
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs text-warning shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="truncate">
+              {ocrFeedback
+                ? ocrFeedback
+                : `检测到 ${activeDoc.scanned_page_count} 页疑似扫描图/纯图页，可调用多模态视觉模型一键 OCR 识图。`}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={ocrBusy}
+            onClick={() => {
+              if (!activeDoc) return;
+              setOcrBusy(true);
+              setOcrFeedback(null);
+              void (async () => {
+                try {
+                  const res = await documentsApi.startOcr(activeDoc.id, selectedProviderId);
+                  setOcrFeedback(`已启动视觉 OCR（共 ${res.total_pages} 页），可在右侧面板查看实时进度...`);
+                  setRightPanelOpen(true);
+                  // Poll until finished so the banner clears automatically once OCR succeeds
+                  for (let i = 0; i < 120; i++) {
+                    await new Promise((r) => setTimeout(r, 2000));
+                    const st = await documentsApi.ocrStatus(activeDoc.id);
+                    if (!st.running) {
+                      await refreshDocs();
+                      setOcrFeedback(
+                        st.last_error
+                          ? `OCR 结束（完成 ${st.completed_pages}/${st.total_pages} 页）：${st.last_error}`
+                          : `视觉 OCR 已完成（识别 ${st.completed_pages} 页）`
+                      );
+                      break;
+                    }
+                    setOcrFeedback(
+                      `视觉 OCR 识图中（${st.completed_pages}/${st.total_pages} 页）...`
+                    );
+                  }
+                } catch (err) {
+                  setOcrFeedback(err instanceof Error ? err.message : "启动视觉 OCR 失败");
+                } finally {
+                  setOcrBusy(false);
+                }
+              })();
+            }}
+            className="sl-btn inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-warning/40 bg-surface/80 px-2.5 text-[11px] font-medium text-ink hover:border-accent disabled:opacity-50"
+          >
+            {ocrBusy ? (
+              <Loader2 className="h-3 w-3 animate-spin text-accent" />
+            ) : (
+              <ScanEye className="h-3 w-3 text-accent" />
+            )}
+            <span>{ocrBusy ? "识图中..." : "一键视觉 OCR"}</span>
+          </button>
         </div>
       )}
 
