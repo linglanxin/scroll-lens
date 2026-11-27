@@ -27,6 +27,7 @@ async def run_tool_agent_loop(
     system_prompt: str,
     executor: Callable[[str, dict[str, Any]], Any],
     use_react_fallback: bool = False,
+    temperature: float = 0.3,
 ) -> AsyncIterator[dict[str, Any]]:
     """
     Bounded multi-round tool-calling loop shared by Novel and Document agents.
@@ -35,6 +36,7 @@ async def run_tool_agent_loop(
       {"event": "tool_start", "data": {...}}
       {"event": "tool_done", "data": {...}}
       {"event": "delta", "data": {"text": "..."}}
+      {"event": "reset_draft", "data": {}}
       {"event": "_final", "answer": str, "tool_trace": list[dict]}
     """
     working_messages = list(messages)
@@ -57,7 +59,7 @@ async def run_tool_agent_loop(
             messages=working_messages,
             tools=active_tools,
             system_prompt=effective_system,
-            temperature=0.3,
+            temperature=temperature,
         ):
             if ev.type == "text_delta" and ev.text:
                 round_text_parts.append(ev.text)
@@ -83,9 +85,10 @@ async def run_tool_agent_loop(
                 answer_chunks.append(round_text)
             break
 
-        # If we received tool calls, execute them (unless budget was somehow already hit)
-        if round_text and not use_react_fallback:
-            answer_chunks.append(round_text)
+        # Tool calls were issued in this round: preamble text is transient thinking,
+        # not part of the final answer. Reset streamed draft cleanly on the client.
+        if round_text.strip() and not use_react_fallback:
+            yield {"event": "reset_draft", "data": {}}
 
         working_messages.append(
             LLMMessage(
@@ -153,7 +156,7 @@ async def run_tool_agent_loop(
                 messages=working_messages,
                 tools=None,
                 system_prompt=system_prompt,
-                temperature=0.3,
+                temperature=temperature,
             ):
                 if ev.type == "text_delta" and ev.text:
                     answer_chunks.append(ev.text)

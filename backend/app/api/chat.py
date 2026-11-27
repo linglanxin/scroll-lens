@@ -28,6 +28,7 @@ class ChatStreamRequest(BaseModel):
     session_id: Optional[int] = None
     provider_id: Optional[int] = None
     max_chapter: Optional[int] = Field(default=None, ge=1)
+    scenario: Optional[str] = Field(default="verify", pattern="^(verify|recap|discuss)$")
 
 
 class SessionUpdateRequest(BaseModel):
@@ -437,6 +438,7 @@ async def chat_stream(
                         user_query=body.message,
                         max_chapter=eff_max_chapter,
                         use_react_fallback=use_react,
+                        scenario=body.scenario or "verify",
                     )
                 else:
                     stream = stream_document_agent(

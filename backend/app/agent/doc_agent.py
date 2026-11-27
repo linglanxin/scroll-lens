@@ -80,7 +80,7 @@ async def stream_document_agent(
     scanned_count = int(doc_row["scanned_page_count"])
 
     scanned_note = (
-        f"注意：本文件共有 {scanned_count} 页为低文字密度/疑似扫描图页，当前 v1.0 仅包含纯文字内容。"
+        f"注意：本文件共有 {scanned_count} 页为低文字密度/疑似扫描图页，当前仅包含纯文字内容；用户可在界面点击「一键视觉 OCR」识别这些页面。"
         if scanned_count > 0
         else ""
     )

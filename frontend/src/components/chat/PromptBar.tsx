@@ -16,7 +16,7 @@ import {
   Square,
 } from "lucide-react";
 import { useAppStore } from "../../stores/appStore";
-import type { Book, DocumentItem } from "../../types/api";
+import type { Book, DocumentItem, NovelScenario } from "../../types/api";
 import {
   DOC_ACCEPT,
   DOC_FORMAT_SUMMARY,
@@ -87,6 +87,16 @@ interface PromptBarProps {
   onOpenSettings: () => void;
 }
 
+const NOVEL_SCENARIOS: Array<{
+  id: NovelScenario;
+  label: string;
+  hint: string;
+}> = [
+  { id: "verify", label: "严谨考据", hint: "逐条带 [ch:N] 出处，无证据明说" },
+  { id: "recap", label: "前情回顾", hint: "停更重拾：主线、人物现状与悬念" },
+  { id: "discuss", label: "防剧透推演", hint: "区分已读事实与合理推测，绝不剧透" },
+];
+
 export function PromptBar({
   activeBook,
   activeDoc,
@@ -99,6 +109,8 @@ export function PromptBar({
 }: PromptBarProps) {
   const {
     mode,
+    novelScenario,
+    setNovelScenario,
     providers,
     selectedProviderId,
     selectProvider,
@@ -362,9 +374,33 @@ export function PromptBar({
             )}
           </div>
 
-          <span className="hidden sm:inline text-[11px] text-ink-muted">
-            输入 <code className="rounded bg-elevated px-1 py-0.5 font-mono">/</code> 唤起指令
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {mode === "novel" && activeBook && (
+              <div
+                className="flex items-center rounded-lg border border-line bg-elevated p-0.5 text-[11px]"
+                title="切换网文问答情景模式"
+              >
+                {NOVEL_SCENARIOS.map((sc) => (
+                  <button
+                    key={sc.id}
+                    type="button"
+                    onClick={() => setNovelScenario(sc.id)}
+                    title={sc.hint}
+                    className={`rounded-md px-2 py-0.5 font-medium transition ${
+                      novelScenario === sc.id
+                        ? "bg-surface text-ink shadow-sm"
+                        : "text-ink-secondary hover:text-ink"
+                    }`}
+                  >
+                    {sc.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <span className="hidden lg:inline text-[11px] text-ink-muted">
+              输入 <code className="rounded bg-elevated px-1 py-0.5 font-mono">/</code> 唤起指令
+            </span>
+          </div>
         </div>
 
         {/* Textarea Input */}

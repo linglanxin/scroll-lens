@@ -107,6 +107,27 @@ CREATE TABLE IF NOT EXISTS wiki_notes (
 );
 CREATE INDEX IF NOT EXISTS idx_wiki_notes_book_id ON wiki_notes(book_id);
 
+CREATE TABLE IF NOT EXISTS novel_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    card_type TEXT NOT NULL DEFAULT 'character' CHECK (card_type IN ('character', 'faction', 'item', 'world')),
+    real_name TEXT NOT NULL,
+    role_badge TEXT NOT NULL DEFAULT '',
+    aliases_json TEXT NOT NULL DEFAULT '[]',
+    titles_json TEXT NOT NULL DEFAULT '[]',
+    status_summary TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    attributes_json TEXT NOT NULL DEFAULT '[]',
+    timeline_json TEXT NOT NULL DEFAULT '[]',
+    relations_json TEXT NOT NULL DEFAULT '[]',
+    source_chapters_json TEXT NOT NULL DEFAULT '[]',
+    as_of_chapter INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(book_id, real_name)
+);
+CREATE INDEX IF NOT EXISTS idx_novel_cards_book_id ON novel_cards(book_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

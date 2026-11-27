@@ -5,6 +5,7 @@ import type {
   ChatSession,
   ChatStreamRequest,
   Citation,
+  NovelCard,
   SSEHandlers,
   ToolTraceItem,
 } from "../types/api";
@@ -113,6 +114,14 @@ export const chatApi = {
         case "delta":
           if (typeof parsed.text === "string") {
             handlers.onDelta?.(parsed.text);
+          }
+          break;
+        case "reset_draft":
+          handlers.onResetDraft?.();
+          break;
+        case "cards":
+          if (Array.isArray(parsed.cards)) {
+            handlers.onCards?.(parsed.cards as NovelCard[]);
           }
           break;
         case "citations":

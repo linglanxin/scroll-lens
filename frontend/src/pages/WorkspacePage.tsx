@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
-import { BookOpen, CheckCircle2, FileText, Loader2, Upload, X } from "lucide-react";
+import { BookOpen, CheckCircle2, FileText, Loader2, MessageSquare, Upload, Users, X } from "lucide-react";
 import { LeftSidebar, type DropNotice } from "../components/layout/LeftSidebar";
 import { ChatArea } from "../components/chat/ChatArea";
+import { NovelCardsView } from "../components/novel/NovelCardsView";
+import { NovelReaderView } from "../components/novel/NovelReaderView";
 import { MobileBookshelf } from "../components/mobile/MobileBookshelf";
 import { NovelRightPanel } from "../components/novel/NovelRightPanel";
 import { DocumentRightPanel } from "../components/document/DocumentRightPanel";
@@ -23,6 +25,8 @@ export function WorkspacePage() {
   const {
     mode,
     setMode,
+    novelTab,
+    setNovelTab,
     books,
     selectedBookId,
     selectedDocId,
@@ -275,7 +279,46 @@ export function WorkspacePage() {
             </button>
           </div>
         )}
-        <ChatArea />
+        {mode === "novel" && selectedBookId !== null && (
+          <div className="flex items-center justify-between border-b border-line bg-surface/90 px-3 sm:px-6 py-1.5 shrink-0">
+            <div className="inline-flex items-center rounded-xl border border-line bg-elevated p-0.5 text-xs">
+              {(
+                [
+                  ["chat", "对话查证", MessageSquare],
+                  ["cards", "人物与势力图鉴", Users],
+                  ["reader", "沉浸阅读", BookOpen],
+                ] as const
+              ).map(([tabId, label, Icon]) => {
+                const active = novelTab === tabId;
+                return (
+                  <button
+                    key={tabId}
+                    type="button"
+                    onClick={() => setNovelTab(tabId)}
+                    className={`sl-btn inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 sm:px-3 font-medium transition ${
+                      active
+                        ? "bg-surface text-ink shadow-sm"
+                        : "text-ink-secondary hover:text-ink"
+                    }`}
+                  >
+                    <Icon className={`h-3.5 w-3.5 ${active ? "text-accent" : ""}`} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="hidden sm:inline text-[11px] text-ink-muted truncate max-w-[260px]">
+              {books.find((b) => b.id === selectedBookId)?.title ?? ""}
+            </span>
+          </div>
+        )}
+        {mode === "novel" && selectedBookId !== null && novelTab === "cards" ? (
+          <NovelCardsView />
+        ) : mode === "novel" && selectedBookId !== null && novelTab === "reader" ? (
+          <NovelReaderView />
+        ) : (
+          <ChatArea />
+        )}
       </main>
 
       {/* Desktop Right Inspector */}

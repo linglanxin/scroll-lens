@@ -5,24 +5,28 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  Copy,
   FileText,
   Loader2,
   MessageSquarePlus,
   ScanEye,
   Sparkles,
   Upload,
+  UserPlus,
   Wrench,
 } from "lucide-react";
+import { booksApi } from "../../api/books";
 import { documentsApi } from "../../api/documents";
 import { useAppStore } from "../../stores/appStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useReaderStore } from "../../stores/readerStore";
-import type { ChatMessage, Citation, ToolTraceItem } from "../../types/api";
+import type { ChatMessage, Citation, NovelCard, ToolTraceItem } from "../../types/api";
 import { BrandLogo } from "../common/BrandLogo";
 import {
   DOC_ACCEPT,
@@ -77,6 +81,41 @@ function buildQATurns(messages: ChatMessage[]): {
   return { turns, orphanMessages };
 }
 
+function formatToolStepLabel(item: ToolTraceItem): string {
+  const args = item.arguments ?? {};
+  switch (item.tool) {
+    case "list_volumes":
+      return "浏览原书分卷目录与卷纲";
+    case "get_keyword_timeline":
+      return `扫描「${String(args.keyword ?? "关键词")}」全书出场时间轴`;
+    case "search_chapters": {
+      const kws = Array.isArray(args.keywords)
+        ? args.keywords.join(" / ")
+        : String(args.keywords ?? "");
+      return `检索关键词「${kws}」`;
+    }
+    case "list_chapter_titles":
+      return `浏览第 ${String(args.start_ch ?? 1)}–${String(args.end_ch ?? "")} 章标题`;
+    case "read_chapter":
+      return `精读第 ${String(args.chapter_num ?? "?")} 章原文${
+        args.focus_keyword ? `（聚焦：${String(args.focus_keyword)}）` : ""
+      }`;
+    case "query_wiki_notes":
+      return `查阅设定笔记「${String(args.entity_name ?? "全部")}」`;
+    case "list_doc_outline":
+      return "浏览文档页面目录";
+    case "search_doc_pages":
+      return "检索文档相关页面";
+    case "read_doc_page":
+      return `精读文档第 ${String(args.page_num ?? "?")} 页`;
+    default:
+      if (item.mode === "direct_full_text") {
+        return "全文无损直读";
+      }
+      return item.tool ?? item.mode ?? "查证步骤";
+  }
+}
+
 function ToolTraceCapsule({ trace }: { trace: ToolTraceItem[] }) {
   const [open, setOpen] = useState(false);
   if (trace.length === 0) return null;
@@ -98,8 +137,8 @@ function ToolTraceCapsule({ trace }: { trace: ToolTraceItem[] }) {
           )}
           <span className="truncate font-medium">
             {running
-              ? `正在查证原文（第 ${lastTool?.round ?? 1} 轮 · ${lastTool?.tool ?? "检索"}）...`
-              : `已完成 ${trace.length} 步检索查证`}
+              ? `正在查证（第 ${lastTool?.round ?? 1} 轮 · ${formatToolStepLabel(lastTool)}）...`
+              : `已完成 ${trace.length} 步原文查证`}
           </span>
         </span>
         <span className="flex items-center gap-1.5 shrink-0 text-[11px] text-ink-muted">
@@ -115,12 +154,11 @@ function ToolTraceCapsule({ trace }: { trace: ToolTraceItem[] }) {
       </button>
 
       {open && (
-        <div className="border-t border-line bg-surface/60 px-3 py-2 space-y-1.5 font-mono text-[11px] text-ink-secondary">
+        <div className="border-t border-line bg-surface/60 px-3 py-2 space-y-1.5 text-[11px] text-ink-secondary">
           {trace.map((item, idx) => (
             <div key={idx} className="flex items-center justify-between gap-2">
-              <span className="truncate">
-                <span className="text-ink font-medium">{item.tool ?? item.mode ?? "step"}</span>{" "}
-                {item.arguments ? JSON.stringify(item.arguments) : ""}
+              <span className="truncate font-medium text-ink">
+                {formatToolStepLabel(item)}
               </span>
               <span className="sl-num shrink-0 flex items-center gap-1 text-ink-muted">
                 {item.result_chars !== undefined && `${item.result_chars} 字`}
@@ -151,12 +189,17 @@ const DOC_STARTERS = [
 export function ChatArea() {
   const {
     mode,
+    novelScenario,
+    setNovelTab,
+    openCardInGallery,
+    openCardGeneratorWithQuery,
+    pendingChatDraft,
+    clearPendingChatDraft,
     books,
     docs,
     selectedBookId,
     selectedDocId,
     selectedProviderId,
-    setRightPanelTab,
     setRightPanelOpen,
     setActiveView,
     uploadBook,
@@ -176,6 +219,7 @@ export function ChatArea() {
     isStreaming,
     streamingText,
     streamingTools,
+    streamingCards,
     streamingCitations,
     error,
     openOverview,
@@ -194,6 +238,8 @@ export function ChatArea() {
   const [ocrFeedback, setOcrFeedback] = useState<string | null>(null);
   const [collapsedTurns, setCollapsedTurns] = useState<Record<number, boolean>>({});
   const [highlightedMsgId, setHighlightedMsgId] = useState<number | null>(null);
+  const [bookCards, setBookCards] = useState<NovelCard[]>([]);
+  const [copiedMsgId, setCopiedMsgId] = useState<number | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const emptyUploadRef = useRef<HTMLInputElement>(null);
@@ -214,6 +260,26 @@ export function ChatArea() {
     setOcrFeedback(null);
     setOcrBusy(false);
   }, [selectedDocId]);
+
+  useEffect(() => {
+    if (mode === "novel" && selectedBookId) {
+      void booksApi
+        .listCards(selectedBookId)
+        .then((list) => setBookCards(list))
+        .catch(() => setBookCards([]));
+    } else {
+      setBookCards([]);
+    }
+  }, [mode, selectedBookId, messages.length]);
+
+  useEffect(() => {
+    if (!pendingChatDraft) return;
+    setDraft(pendingChatDraft);
+    clearPendingChatDraft();
+    if (chatView === "overview") {
+      newSession();
+    }
+  }, [pendingChatDraft, clearPendingChatDraft, chatView, newSession]);
 
   // Reset turn folding defaults when entering a session or focusing a specific historical Q&A
   useEffect(() => {
@@ -305,14 +371,55 @@ export function ChatArea() {
     }
   }, [chatView, messages.length, focusMessageId, highlightedMsgId, isStreaming]);
 
-  function handleCitationClick(kind: "ch" | "p", num: number) {
+  function handleCitationClick(kind: "ch" | "p", num: number, focusKeyword = "") {
     if (kind === "ch" && selectedBookId) {
-      setRightPanelTab("reader");
-      void openChapter(selectedBookId, num);
+      setNovelTab("reader");
+      void openChapter(selectedBookId, num, focusKeyword);
     } else if (kind === "p" && selectedDocId) {
       setRightPanelOpen(true);
       void openDocPage(selectedDocId, num);
     }
+  }
+
+  function findMatchedCards(text: string): NovelCard[] {
+    if (mode !== "novel" || bookCards.length === 0 || !text) return [];
+    const lower = text.toLowerCase();
+    return bookCards
+      .filter(
+        (c) =>
+          (c.real_name.length >= 2 && lower.includes(c.real_name.toLowerCase())) ||
+          c.aliases.some((a) => a.length >= 2 && lower.includes(a.toLowerCase()))
+      )
+      .slice(0, 3);
+  }
+
+  function renderMatchedCardsStrip(cards: NovelCard[]) {
+    if (mode !== "novel" || cards.length === 0) return null;
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-2.5">
+        <span className="text-[11px] font-medium text-ink-muted">相关档案卡：</span>
+        {cards.map((card) => (
+          <button
+            key={card.id}
+            type="button"
+            onClick={() => openCardInGallery(card.id)}
+            className="sl-btn inline-flex items-center gap-1.5 rounded-xl border border-line bg-elevated/80 px-2.5 py-1 text-left text-[11px] hover:border-accent"
+          >
+            <span className="font-semibold text-ink">{card.real_name}</span>
+            {card.role_badge && (
+              <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                {card.role_badge}
+              </span>
+            )}
+            {card.status_summary && (
+              <span className="hidden sm:inline max-w-[180px] truncate text-ink-muted">
+                {card.status_summary}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   function renderCitationsBar(citations: Citation[]) {
@@ -324,7 +431,9 @@ export function ChatArea() {
             <button
               key={`ch-${c.chapter_num}-${i}`}
               type="button"
-              onClick={() => handleCitationClick("ch", c.chapter_num)}
+              onClick={() =>
+                handleCitationClick("ch", c.chapter_num, c.focus_keyword ?? "")
+              }
               className="sl-btn inline-flex items-center gap-1 rounded-lg border border-line bg-elevated px-2 py-1 text-[11px] font-medium text-ink-secondary hover:border-accent hover:text-accent"
             >
               <BookOpen className="h-3 w-3 shrink-0 text-accent" />
@@ -348,7 +457,13 @@ export function ChatArea() {
     );
   }
 
-  function renderMarkdown(raw: string) {
+  function renderMarkdown(raw: string, citations: Citation[] = []) {
+    const chFocusMap = new Map<number, string>();
+    for (const c of citations) {
+      if (c.type === "chapter" && c.focus_keyword) {
+        chFocusMap.set(c.chapter_num, c.focus_keyword);
+      }
+    }
     return (
       <div className="sl-prose">
         <ReactMarkdown
@@ -360,7 +475,9 @@ export function ChatArea() {
                 return (
                   <button
                     type="button"
-                    onClick={() => handleCitationClick("ch", ch)}
+                    onClick={() =>
+                      handleCitationClick("ch", ch, chFocusMap.get(ch) ?? "")
+                    }
                     className="sl-num mx-0.5 inline-flex items-center rounded-md bg-accent-soft px-1.5 py-0.5 text-[12px] font-medium text-accent hover:underline"
                   >
                     {children}
@@ -403,7 +520,29 @@ export function ChatArea() {
       message: text,
       providerId: selectedProviderId,
       maxChapter: mode === "novel" ? activeBook?.read_progress_ch : null,
+      scenario: mode === "novel" ? novelScenario : undefined,
     });
+  }
+
+  async function handleCopyMessage(msgId: number, content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMsgId(msgId);
+      window.setTimeout(() => {
+        setCopiedMsgId((cur) => (cur === msgId ? null : cur));
+      }, 1800);
+    } catch {
+      // ignore clipboard errors
+    }
+  }
+
+  function handleBuildCardFromTurn(questionText: string) {
+    const cleaned = questionText
+      .replace(/[？?。！!，,：:]/g, " ")
+      .replace(/^(请|帮我|请问|我想知道|介绍一下|查一下|梳理|总结)/, "")
+      .trim()
+      .slice(0, 24);
+    openCardGeneratorWithQuery(cleaned || "主角");
   }
 
   if (!targetId) {
@@ -786,20 +925,65 @@ export function ChatArea() {
                   {turn.assistantMsg ? (
                     <div className="w-full rounded-2xl border border-line bg-surface p-4 sm:p-5">
                       <ToolTraceCapsule trace={turn.assistantMsg.tool_trace} />
-                      {renderMarkdown(turn.assistantMsg.content)}
+                      {renderMarkdown(
+                        turn.assistantMsg.content,
+                        turn.assistantMsg.citations
+                      )}
+                      {renderMatchedCardsStrip(
+                        findMatchedCards(
+                          `${turn.userMsg.content}\n${turn.assistantMsg.content}`
+                        )
+                      )}
                       {renderCitationsBar(turn.assistantMsg.citations)}
+                      <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2 border-t border-line/60 pt-2 text-[11px] text-ink-muted">
+                        {mode === "novel" && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleBuildCardFromTurn(turn.userMsg.content)
+                            }
+                            className="sl-btn inline-flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-hover hover:text-accent"
+                          >
+                            <UserPlus className="h-3 w-3" />
+                            <span>生成人物/势力卡</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleCopyMessage(
+                              turn.assistantMsg!.id,
+                              turn.assistantMsg!.content
+                            )
+                          }
+                          className="sl-btn inline-flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-hover hover:text-ink"
+                        >
+                          {copiedMsgId === turn.assistantMsg.id ? (
+                            <>
+                              <Check className="h-3 w-3 text-success" />
+                              <span>已复制</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3 w-3" />
+                              <span>复制</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ) : isTurnStreaming ? (
                     <div className="w-full rounded-2xl border border-line bg-surface p-4 sm:p-5">
                       <ToolTraceCapsule trace={streamingTools} />
                       {streamingText ? (
-                        renderMarkdown(streamingText)
+                        renderMarkdown(streamingText, streamingCitations)
                       ) : (
                         <div className="flex items-center gap-2 text-xs text-ink-muted">
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
                           <span>正在查证原文并组织回答...</span>
                         </div>
                       )}
+                      {renderMatchedCardsStrip(streamingCards)}
                       {renderCitationsBar(streamingCitations)}
                     </div>
                   ) : null}

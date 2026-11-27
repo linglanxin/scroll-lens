@@ -6,6 +6,8 @@ import type {
   AppMode,
   Book,
   DocumentItem,
+  NovelScenario,
+  NovelWorkspaceTab,
   ProviderItem,
   ProviderPreset,
 } from "../types/api";
@@ -37,6 +39,11 @@ interface AppState {
   mobileSidebarOpen: boolean;
   rightPanelOpen: boolean;
   rightPanelTab: RightPanelTab;
+  novelTab: NovelWorkspaceTab;
+  novelScenario: NovelScenario;
+  activeCardId: number | null;
+  pendingCardQuery: string | null;
+  pendingChatDraft: string | null;
 
   books: Book[];
   docs: DocumentItem[];
@@ -59,6 +66,13 @@ interface AppState {
   setMobileSidebarOpen: (open: boolean) => void;
   setRightPanelOpen: (open: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
+  setNovelTab: (tab: NovelWorkspaceTab) => void;
+  setNovelScenario: (scenario: NovelScenario) => void;
+  openCardInGallery: (cardId: number | null) => void;
+  openCardGeneratorWithQuery: (query: string) => void;
+  clearPendingCardQuery: () => void;
+  requestNovelQuestion: (draft: string, scenario?: NovelScenario) => void;
+  clearPendingChatDraft: () => void;
   selectBook: (bookId: number | null) => void;
   selectDoc: (docId: number | null) => void;
   selectProvider: (providerId: number | null) => void;
@@ -86,6 +100,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   mobileSidebarOpen: false,
   rightPanelOpen: getInitialRightPanelOpen(),
   rightPanelTab: "volumes",
+  novelTab: "chat",
+  novelScenario: "verify",
+  activeCardId: null,
+  pendingCardQuery: null,
+  pendingChatDraft: null,
 
   books: [],
   docs: [],
@@ -121,7 +140,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
   setRightPanelOpen: (rightPanelOpen) => set({ rightPanelOpen }),
   setRightPanelTab: (rightPanelTab) => set({ rightPanelTab, rightPanelOpen: true }),
-  selectBook: (selectedBookId) => set({ selectedBookId, mobileSidebarOpen: false }),
+  setNovelTab: (novelTab) => set({ novelTab }),
+  setNovelScenario: (novelScenario) => set({ novelScenario }),
+  openCardInGallery: (activeCardId) =>
+    set({ mode: "novel", novelTab: "cards", activeCardId }),
+  openCardGeneratorWithQuery: (query) =>
+    set({
+      mode: "novel",
+      novelTab: "cards",
+      activeCardId: null,
+      pendingCardQuery: query.trim(),
+    }),
+  clearPendingCardQuery: () => set({ pendingCardQuery: null }),
+  requestNovelQuestion: (draft, scenario) =>
+    set((s) => ({
+      mode: "novel",
+      novelTab: "chat",
+      pendingChatDraft: draft,
+      novelScenario: scenario ?? s.novelScenario,
+    })),
+  clearPendingChatDraft: () => set({ pendingChatDraft: null }),
+  selectBook: (selectedBookId) =>
+    set({
+      selectedBookId,
+      mobileSidebarOpen: false,
+      activeCardId: null,
+      pendingCardQuery: null,
+    }),
   selectDoc: (selectedDocId) => set({ selectedDocId, mobileSidebarOpen: false }),
   selectProvider: (selectedProviderId) => set({ selectedProviderId }),
   clearActionError: () => set({ actionError: null }),

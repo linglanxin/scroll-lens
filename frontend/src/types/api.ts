@@ -1,5 +1,8 @@
 export type UserRole = "admin" | "user";
 export type AppMode = "novel" | "document";
+export type NovelScenario = "verify" | "recap" | "discuss";
+export type NovelWorkspaceTab = "chat" | "cards" | "reader";
+export type NovelCardType = "character" | "faction" | "item" | "world";
 export type ProtocolType = "openai_compat" | "anthropic" | "gemini";
 
 export interface User {
@@ -129,6 +132,68 @@ export interface WikiNote {
   content_md: string;
   source_chapters: number[];
   updated_at: string;
+}
+
+export interface NovelCardAttribute {
+  label: string;
+  value: string;
+}
+
+export interface NovelCardTimelineItem {
+  stage: string;
+  chapter_range: string;
+  anchor_chapter: number;
+  event: string;
+}
+
+export interface NovelCardRelation {
+  target: string;
+  relation: string;
+  anchor_chapter: number;
+}
+
+export interface NovelCardActivityBucket {
+  start_ch: number;
+  end_ch: number;
+  matching_chapters: number;
+  occurrences: number;
+}
+
+export interface NovelCardActivity {
+  first_chapter: number | null;
+  last_chapter: number | null;
+  matching_chapters: number;
+  total_occurrences: number;
+  buckets: NovelCardActivityBucket[];
+}
+
+export interface NovelCard {
+  id: number;
+  book_id: number;
+  card_type: NovelCardType;
+  real_name: string;
+  role_badge: string;
+  aliases: string[];
+  titles: string[];
+  status_summary: string;
+  summary: string;
+  attributes: NovelCardAttribute[];
+  timeline: NovelCardTimelineItem[];
+  relations: NovelCardRelation[];
+  source_chapters: number[];
+  as_of_chapter: number;
+  spoiler_hidden_count: number;
+  activity?: NovelCardActivity;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiscoveredEntity {
+  name: string;
+  card_type: NovelCardType;
+  role_badge: string;
+  reason: string;
+  existing_card_id: number | null;
 }
 
 export interface DocumentItem {
@@ -263,6 +328,7 @@ export interface ChapterCitation {
   title: string;
   volume_num: number;
   volume_title: string;
+  focus_keyword?: string;
 }
 
 export interface PageCitation {
@@ -291,6 +357,7 @@ export interface ChatStreamRequest {
   session_id?: number | null;
   provider_id?: number | null;
   max_chapter?: number | null;
+  scenario?: NovelScenario;
 }
 
 export interface SSEHandlers {
@@ -298,6 +365,8 @@ export interface SSEHandlers {
   onToolStart?: (data: ToolTraceItem) => void;
   onToolDone?: (data: ToolTraceItem) => void;
   onDelta?: (text: string) => void;
+  onResetDraft?: () => void;
+  onCards?: (cards: NovelCard[]) => void;
   onCitations?: (citations: Citation[]) => void;
   onDone?: (data: { session_id: number; message_id: number }) => void;
   onError?: (detail: string) => void;

@@ -1,14 +1,47 @@
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from typing import Any, AsyncIterator
 
 from app.agent.loop import run_tool_agent_loop
 from app.engines.novel import search as novel_search
+from app.engines.novel.cards import match_cards_for_query
 from app.llm.base import BaseLLMAdapter, LLMMessage, ToolDefinition
 
 CH_CITATION_RE = re.compile(r"\[ch:(\d+)\]")
+
+NOVEL_SCENARIO_CONFIG: dict[str, dict[str, Any]] = {
+    "verify": {
+        "label": "严谨考据",
+        "temperature": 0.15,
+        "instructions": (
+            "【当前情景：严谨考据】\n"
+            "- 输出规范：先给简洁「核心结论」，再按章节先后列出原文依据（每条必带 `[ch:章节号]`）。\n"
+            "- 证据边界：若截至第 {max_chapter} 章未检索到依据，必须明确声明未查到相关记载，严禁猜补。\n"
+        ),
+    },
+    "recap": {
+        "label": "前情回顾",
+        "temperature": 0.25,
+        "instructions": (
+            "【当前情景：前情回顾（停更重拾）】\n"
+            "- 优先查看 `list_volumes` 与接近第 {max_chapter} 章的章节标题及原文，帮读者快速接上进度。\n"
+            "- 输出规范：按「当前所处卷与主线进展 → 关键人物当前状态 → 尚未回收的悬念」三段梳理，附 `[ch:章节号]`。\n"
+        ),
+    },
+    "discuss": {
+        "label": "防剧透推演",
+        "temperature": 0.45,
+        "instructions": (
+            "【当前情景：防剧透推演】\n"
+            "- 允许像同好陪读一样分析伏笔、人物动机与后续走向，但必须清晰分层：\n"
+            "  1. 「已读事实」：严格带 `[ch:章节号]` 出处；\n"
+            "  2. 「基于已读内容的推演」：明确标注为推测，绝不借推演泄露第 {max_chapter} 章之后的真实剧情。\n"
+        ),
+    },
+}
 
 NOVEL_TOOLS: list[ToolDefinition] = [
     ToolDefinition(
@@ -97,20 +130,57 @@ NOVEL_TOOLS: list[ToolDefinition] = [
 ]
 
 
-def _build_novel_system_prompt(book_title: str, total_chapters: int, max_chapter: int) -> str:
+def _build_novel_system_prompt(
+    book_title: str,
+    total_chapters: int,
+    max_chapter: int,
+    scenario: str = "verify",
+    matched_cards: list[dict[str, Any]] | None = None,
+) -> str:
+    cfg = NOVEL_SCENARIO_CONFIG.get(scenario, NOVEL_SCENARIO_CONFIG["verify"])
+    scenario_block = str(cfg["instructions"]).replace("{max_chapter}", str(max_chapter))
+
+    cards_block = ""
+    if matched_cards:
+        compact_cards = [
+            {
+                "real_name": c["real_name"],
+                "role_badge": c["role_badge"],
+                "aliases": c["aliases"],
+                "titles": c["titles"],
+                "status_summary": c["status_summary"],
+                "as_of_chapter": c["as_of_chapter"],
+            }
+            for c in matched_cards
+        ]
+        cards_block = (
+            "\n【本地已存档人物/势力档案（已按当前进度过滤）】\n"
+            + json.dumps(compact_cards, ensure_ascii=False)
+            + "\n"
+        )
+
     return (
-        f"你是 ScrollLens（卷镜）网文阅读助手，正在协助用户查证超长连载小说《{book_title}》"
+        f"你是 ScrollLens（卷镜）网文阅读助手，正在协助用户查证长篇小说《{book_title}》"
         f"（全书共 {total_chapters} 章，当前防剧透进度锁限制在 **第 {max_chapter} 章** 及以前）。\n\n"
         "请严格遵守以下规则：\n"
-        "1. **防剧透绝对红线**：严禁检索、引用或剧透第 {max_chapter} 章之后的任何内容。\n"
+        f"1. **防剧透绝对红线**：严禁检索、引用或暗示第 {max_chapter} 章之后的任何内容；"
+        f"**严禁调用你自身预训练记忆来补全本书第 {max_chapter} 章之后的剧情、隐藏身份或结局**。\n"
         "2. **先结构/时间轴，再精读**：面对宏观问题先调用 `list_volumes` 或 `get_keyword_timeline` 定位热区，"
         "再用 `search_chapters` 锁定具体章节，最后按需用 `read_chapter` 核对原文细节。\n"
         "3. **真实引用**：回答中提及具体事件、设定或原话时，必须使用 `[ch:章节号]` 格式标注依据"
-        "（例如 `[ch:128]`），切勿编造不存在的章号或剧情；若在进度范围内未查到证据，请诚实说明。\n"
-    ).replace("{max_chapter}", str(max_chapter))
+        "（例如 `[ch:128]`），切勿编造不存在的章号或剧情。\n\n"
+        f"{scenario_block}"
+        f"{cards_block}"
+    )
 
 
-def extract_chapter_citations(conn: sqlite3.Connection, book_id: int, answer_text: str, max_chapter: int) -> list[dict]:
+def extract_chapter_citations(
+    conn: sqlite3.Connection,
+    book_id: int,
+    answer_text: str,
+    max_chapter: int,
+    focus_keyword: str = "",
+) -> list[dict]:
     nums = sorted({int(m.group(1)) for m in CH_CITATION_RE.finditer(answer_text) if int(m.group(1)) <= max_chapter})
     if not nums:
         return []
@@ -128,6 +198,7 @@ def extract_chapter_citations(conn: sqlite3.Connection, book_id: int, answer_tex
             "title": r["title"],
             "volume_num": r["volume_num"],
             "volume_title": r["volume_title"],
+            **({"focus_keyword": focus_keyword} if focus_keyword else {}),
         }
         for r in rows
     ]
@@ -141,10 +212,21 @@ async def stream_novel_agent(
     user_query: str,
     max_chapter: int,
     use_react_fallback: bool = False,
+    scenario: str = "verify",
 ) -> AsyncIterator[dict[str, Any]]:
     book_id = int(book_row["id"])
     total_chapters = int(book_row["total_chapters"])
     eff_max = max(1, min(max_chapter, total_chapters)) if total_chapters > 0 else 0
+
+    matched_cards = (
+        match_cards_for_query(conn, book_id, user_query, eff_max, limit=3)
+        if eff_max > 0
+        else []
+    )
+    if matched_cards:
+        yield {"event": "cards", "data": {"cards": matched_cards}}
+
+    tracked_keywords: list[str] = []
 
     def execute_tool(name: str, args: dict[str, Any]) -> Any:
         # Hard enforcement of eff_max regardless of what the LLM asks for
@@ -154,10 +236,13 @@ async def stream_novel_agent(
         if name == "list_volumes":
             return novel_search.list_volumes(conn, book_id, clamped_max)
         if name == "get_keyword_timeline":
+            kw = str(args.get("keyword", "")).strip()
+            if kw:
+                tracked_keywords.append(kw)
             return novel_search.get_keyword_timeline(
                 conn,
                 book_id,
-                keyword=str(args.get("keyword", "")),
+                keyword=kw,
                 max_chapter=clamped_max,
                 buckets=int(args.get("buckets", 20)),
             )
@@ -165,10 +250,13 @@ async def stream_novel_agent(
             kws = args.get("keywords") or []
             if isinstance(kws, str):
                 kws = [kws]
+            clean_kws = [str(k).strip() for k in kws if str(k).strip()]
+            if clean_kws:
+                tracked_keywords.append(clean_kws[0])
             return novel_search.search_chapters(
                 conn,
                 book_id,
-                keywords=[str(k) for k in kws],
+                keywords=clean_kws,
                 max_chapter=eff_max,
                 match_mode=str(args.get("match_mode", "AND")),
                 volume_num=int(args["volume_num"]) if args.get("volume_num") is not None else None,
@@ -185,12 +273,15 @@ async def stream_novel_agent(
                 max_chapter=eff_max,
             )
         if name == "read_chapter":
+            fk = args.get("focus_keyword")
+            if isinstance(fk, str) and fk.strip():
+                tracked_keywords.append(fk.strip())
             return novel_search.read_chapter(
                 conn,
                 book_id,
                 chapter_num=int(args.get("chapter_num", 1)),
                 max_chapter=eff_max,
-                focus_keyword=args.get("focus_keyword"),
+                focus_keyword=fk,
                 max_chars=int(args.get("max_chars", 2500)),
             )
         if name == "query_wiki_notes":
@@ -200,7 +291,15 @@ async def stream_novel_agent(
         return {"error": f"Unknown tool: {name}"}
 
     messages = [*history_messages, LLMMessage(role="user", content=user_query)]
-    system_prompt = _build_novel_system_prompt(str(book_row["title"]), total_chapters, eff_max)
+    eff_scenario = scenario if scenario in NOVEL_SCENARIO_CONFIG else "verify"
+    scenario_temp = float(NOVEL_SCENARIO_CONFIG[eff_scenario]["temperature"])
+    system_prompt = _build_novel_system_prompt(
+        str(book_row["title"]),
+        total_chapters,
+        eff_max,
+        scenario=eff_scenario,
+        matched_cards=matched_cards,
+    )
 
     final_answer = ""
     tool_trace: list[dict[str, Any]] = []
@@ -211,6 +310,7 @@ async def stream_novel_agent(
         system_prompt=system_prompt,
         executor=execute_tool,
         use_react_fallback=use_react_fallback,
+        temperature=scenario_temp,
     ):
         if ev["event"] == "_final":
             final_answer = ev["answer"]
@@ -218,7 +318,8 @@ async def stream_novel_agent(
         else:
             yield ev
 
-    citations = extract_chapter_citations(conn, book_id, final_answer, eff_max)
+    focus_kw = tracked_keywords[0] if tracked_keywords else (matched_cards[0]["real_name"] if matched_cards else "")
+    citations = extract_chapter_citations(conn, book_id, final_answer, eff_max, focus_keyword=focus_kw)
     yield {"event": "citations", "data": {"citations": citations}}
     yield {
         "event": "_complete",

@@ -13,8 +13,16 @@ from pydantic import BaseModel, Field
 
 from app.config import Settings
 from app.core.deps import CurrentUser, bearer_scheme, get_app_settings, get_current_user, get_db
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, decrypt_api_key
 from app.db.database import Database, get_system_settings_dict, utcnow_iso
+from app.engines.novel.cards import (
+    VALID_CARD_TYPES,
+    discover_key_entities,
+    generate_or_update_card,
+    list_book_cards,
+    serialize_card_row,
+    sync_card_to_aliases,
+)
 from app.engines.novel.indexer import (
     append_book_chapters,
     ingest_book,
@@ -23,6 +31,7 @@ from app.engines.novel.indexer import (
 )
 from app.engines.novel.parser import SUPPORTED_NOVEL_EXTENSIONS, parse_novel_bytes
 from app.engines.novel.volume_summarizer import VolumeSummarizerManager
+from app.llm.factory import create_adapter
 
 router = APIRouter(prefix="/api/v1/books", tags=["books"])
 
@@ -152,6 +161,51 @@ class WikiUpsertRequest(BaseModel):
     category: str = Field(default="人物", max_length=40)
     content_md: str = Field(..., min_length=1)
     source_chapters: list[int] = Field(default_factory=list)
+
+
+class CardGenerateRequest(BaseModel):
+    query_name: str = Field(..., min_length=1, max_length=80)
+    card_type: Optional[str] = Field(default=None, max_length=20)
+    provider_id: Optional[int] = None
+    max_chapter: Optional[int] = Field(default=None, ge=1)
+    card_id: Optional[int] = Field(default=None, ge=1)
+
+
+class CardDiscoverRequest(BaseModel):
+    provider_id: Optional[int] = None
+    max_chapter: Optional[int] = Field(default=None, ge=1)
+
+
+class CardUpdateRequest(BaseModel):
+    card_type: Optional[str] = Field(default=None, max_length=20)
+    real_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    role_badge: Optional[str] = Field(default=None, max_length=30)
+    aliases: Optional[list[str]] = None
+    titles: Optional[list[str]] = None
+    status_summary: Optional[str] = Field(default=None, max_length=220)
+    summary: Optional[str] = Field(default=None, max_length=800)
+    attributes: Optional[list[dict]] = None
+    timeline: Optional[list[dict]] = None
+    relations: Optional[list[dict]] = None
+
+
+def _resolve_user_provider(conn: sqlite3.Connection, user_id: int, provider_id: int | None) -> dict:
+    if provider_id is not None:
+        prov = conn.execute(
+            "SELECT * FROM llm_providers WHERE id = ? AND user_id = ?",
+            (provider_id, user_id),
+        ).fetchone()
+    else:
+        prov = conn.execute(
+            "SELECT * FROM llm_providers WHERE user_id = ? ORDER BY is_default DESC, id ASC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+    if prov is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请先在设置页配置大模型 API Key",
+        )
+    return dict(prov)
 
 
 @router.get("")
@@ -720,3 +774,238 @@ def delete_wiki_note(
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Wiki note not found")
     return {"deleted": True, "wiki_id": wiki_id}
+
+
+def _effective_book_max_chapter(book: sqlite3.Row, override: int | None = None) -> int:
+    total = int(book["total_chapters"])
+    prog = int(book["read_progress_ch"]) or total
+    if override is not None:
+        return max(1, min(override, prog)) if total > 0 else 0
+    return max(1, min(prog, total)) if total > 0 else 0
+
+
+@router.get("/{book_id}/cards")
+def list_cards_endpoint(
+    book_id: int,
+    card_type: Optional[str] = Query(default=None),
+    include_activity: bool = Query(default=True),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+) -> list[dict]:
+    with db.session() as conn:
+        book = _require_owned_book(conn, book_id, current_user.id)
+        max_ch = _effective_book_max_chapter(book)
+        return list_book_cards(
+            conn,
+            book_id,
+            max_chapter=max_ch,
+            card_type=card_type,
+            include_activity=include_activity,
+        )
+
+
+@router.get("/{book_id}/cards/{card_id}")
+def get_card_endpoint(
+    book_id: int,
+    card_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+) -> dict:
+    with db.session() as conn:
+        book = _require_owned_book(conn, book_id, current_user.id)
+        row = conn.execute(
+            "SELECT * FROM novel_cards WHERE id = ? AND book_id = ?",
+            (card_id, book_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+        return serialize_card_row(
+            row,
+            conn=conn,
+            max_chapter=_effective_book_max_chapter(book),
+            include_activity=True,
+        )
+
+
+@router.post("/{book_id}/cards/generate", status_code=status.HTTP_201_CREATED)
+async def generate_card_endpoint(
+    book_id: int,
+    body: CardGenerateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
+) -> dict:
+    secret_key = settings.resolved_secret_key()
+    with db.session() as conn:
+        book = _require_owned_book(conn, book_id, current_user.id)
+        prov = _resolve_user_provider(conn, current_user.id, body.provider_id)
+        max_ch = _effective_book_max_chapter(book, body.max_chapter)
+        existing_card = None
+        if body.card_id is not None:
+            erow = conn.execute(
+                "SELECT * FROM novel_cards WHERE id = ? AND book_id = ?",
+                (body.card_id, book_id),
+            ).fetchone()
+            if erow is None:
+                raise HTTPException(status_code=404, detail="Card not found")
+            existing_card = serialize_card_row(erow, max_chapter=max_ch)
+
+    api_key = decrypt_api_key(prov["api_key_enc"], secret_key)
+    adapter = create_adapter(
+        protocol=prov["protocol"],
+        base_url=prov["base_url"],
+        api_key=api_key,
+        model_name=prov["model_name"],
+        timeout=120.0,
+    )
+    use_react = bool(prov["use_react_fallback"]) or not bool(prov["supports_tools"])
+
+    with db.session() as conn:
+        return await generate_or_update_card(
+            conn=conn,
+            adapter=adapter,
+            book_row=book,
+            query_name=body.query_name,
+            max_chapter=max_ch,
+            card_type_hint=body.card_type,
+            existing_card=existing_card,
+            use_react_fallback=use_react,
+        )
+
+
+@router.post("/{book_id}/cards/discover")
+async def discover_cards_endpoint(
+    book_id: int,
+    body: CardDiscoverRequest = CardDiscoverRequest(),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
+) -> dict:
+    secret_key = settings.resolved_secret_key()
+    with db.session() as conn:
+        book = _require_owned_book(conn, book_id, current_user.id)
+        prov = _resolve_user_provider(conn, current_user.id, body.provider_id)
+        max_ch = _effective_book_max_chapter(book, body.max_chapter)
+
+    api_key = decrypt_api_key(prov["api_key_enc"], secret_key)
+    adapter = create_adapter(
+        protocol=prov["protocol"],
+        base_url=prov["base_url"],
+        api_key=api_key,
+        model_name=prov["model_name"],
+        timeout=90.0,
+    )
+    with db.session() as conn:
+        candidates = await discover_key_entities(
+            conn=conn, adapter=adapter, book_row=book, max_chapter=max_ch
+        )
+    return {"candidates": candidates}
+
+
+@router.put("/{book_id}/cards/{card_id}")
+def update_card_endpoint(
+    book_id: int,
+    card_id: int,
+    body: CardUpdateRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+) -> dict:
+    with db.session() as conn:
+        book = _require_owned_book(conn, book_id, current_user.id)
+        row = conn.execute(
+            "SELECT * FROM novel_cards WHERE id = ? AND book_id = ?",
+            (card_id, book_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+
+        new_type = (
+            body.card_type.strip().lower()
+            if body.card_type and body.card_type.strip().lower() in VALID_CARD_TYPES
+            else str(row["card_type"])
+        )
+        new_name = body.real_name.strip() if body.real_name is not None else str(row["real_name"])
+        new_badge = body.role_badge.strip() if body.role_badge is not None else str(row["role_badge"])
+        new_aliases = (
+            json.dumps(sorted({a.strip() for a in body.aliases if a.strip() and a.strip() != new_name}), ensure_ascii=False)
+            if body.aliases is not None
+            else str(row["aliases_json"])
+        )
+        new_titles = (
+            json.dumps(sorted({t.strip() for t in body.titles if t.strip()}), ensure_ascii=False)
+            if body.titles is not None
+            else str(row["titles_json"])
+        )
+        new_status = body.status_summary.strip() if body.status_summary is not None else str(row["status_summary"])
+        new_summary = body.summary.strip() if body.summary is not None else str(row["summary"])
+        new_attrs = json.dumps(body.attributes, ensure_ascii=False) if body.attributes is not None else str(row["attributes_json"])
+        new_tl = json.dumps(body.timeline, ensure_ascii=False) if body.timeline is not None else str(row["timeline_json"])
+        new_rel = json.dumps(body.relations, ensure_ascii=False) if body.relations is not None else str(row["relations_json"])
+
+        try:
+            conn.execute(
+                "UPDATE novel_cards SET card_type = ?, real_name = ?, role_badge = ?, "
+                "aliases_json = ?, titles_json = ?, status_summary = ?, summary = ?, "
+                "attributes_json = ?, timeline_json = ?, relations_json = ?, updated_at = ? "
+                "WHERE id = ? AND book_id = ?",
+                (
+                    new_type,
+                    new_name,
+                    new_badge,
+                    new_aliases,
+                    new_titles,
+                    new_status,
+                    new_summary,
+                    new_attrs,
+                    new_tl,
+                    new_rel,
+                    utcnow_iso(),
+                    card_id,
+                    book_id,
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="该书中已存在同名档案卡") from exc
+
+        updated = conn.execute(
+            "SELECT * FROM novel_cards WHERE id = ? AND book_id = ?", (card_id, book_id)
+        ).fetchone()
+        return serialize_card_row(
+            updated,
+            conn=conn,
+            max_chapter=_effective_book_max_chapter(book),
+            include_activity=True,
+        )
+
+
+@router.post("/{book_id}/cards/{card_id}/sync-aliases")
+def sync_card_aliases_endpoint(
+    book_id: int,
+    card_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+) -> dict:
+    with db.session() as conn:
+        _require_owned_book(conn, book_id, current_user.id)
+    try:
+        return sync_card_to_aliases(db, book_id, card_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/{book_id}/cards/{card_id}")
+def delete_card_endpoint(
+    book_id: int,
+    card_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Database = Depends(get_db),
+) -> dict:
+    with db.session() as conn:
+        _require_owned_book(conn, book_id, current_user.id)
+        cur = conn.execute(
+            "DELETE FROM novel_cards WHERE id = ? AND book_id = ?",
+            (card_id, book_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Card not found")
+    return {"deleted": True, "card_id": card_id}

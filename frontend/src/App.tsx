@@ -45,6 +45,10 @@ export function App() {
         state.setActiveView("workspace");
         return true;
       }
+      if (state.mode === "novel" && state.novelTab !== "chat") {
+        state.setNovelTab("chat");
+        return true;
+      }
       if (window.innerWidth < 768 && state.mobileView === "workspace") {
         const chatState = useChatStore.getState();
         if (chatState.chatView === "chat" && chatState.sessions.length > 0) {

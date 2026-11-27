@@ -5,6 +5,8 @@ import type {
   ChatMessage,
   ChatSession,
   Citation,
+  NovelCard,
+  NovelScenario,
   ToolTraceItem,
 } from "../types/api";
 
@@ -22,6 +24,7 @@ interface ChatState {
   isStreaming: boolean;
   streamingText: string;
   streamingTools: ToolTraceItem[];
+  streamingCards: NovelCard[];
   streamingCitations: Citation[];
   error: string | null;
   abortController: AbortController | null;
@@ -44,6 +47,7 @@ interface ChatState {
     message: string;
     providerId?: number | null;
     maxChapter?: number | null;
+    scenario?: NovelScenario;
   }) => Promise<void>;
   stopStreaming: () => void;
   clearError: () => void;
@@ -61,6 +65,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   streamingText: "",
   streamingTools: [],
+  streamingCards: [],
   streamingCitations: [],
   error: null,
   abortController: null,
@@ -169,6 +174,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [],
       streamingText: "",
       streamingTools: [],
+      streamingCards: [],
       streamingCitations: [],
       error: null,
     });
@@ -238,7 +244,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async ({ mode, targetId, message, providerId, maxChapter }) => {
+  sendMessage: async ({ mode, targetId, message, providerId, maxChapter, scenario }) => {
     const trimmed = message.trim();
     if (!trimmed || get().isStreaming) return;
 
@@ -260,6 +266,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: true,
       streamingText: "",
       streamingTools: [],
+      streamingCards: [],
       streamingCitations: [],
       error: null,
       abortController: ac,
@@ -276,6 +283,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           session_id: resolvedSessionId,
           provider_id: providerId ?? null,
           max_chapter: mode === "novel" ? (maxChapter ?? null) : null,
+          scenario: mode === "novel" ? (scenario ?? "verify") : undefined,
         },
         {
           onSession: (sid) => {
@@ -306,6 +314,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
           },
           onDelta: (text) => {
             set((s) => ({ streamingText: s.streamingText + text }));
+          },
+          onResetDraft: () => {
+            set({ streamingText: "" });
+          },
+          onCards: (cards) => {
+            set({ streamingCards: cards });
           },
           onCitations: (citations) => {
             set({ streamingCitations: citations });
@@ -338,6 +352,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           isStreaming: false,
           streamingText: "",
           streamingTools: [],
+          streamingCards: [],
           streamingCitations: [],
           abortController: null,
         });

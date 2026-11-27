@@ -42,6 +42,7 @@ function formatRelativeTime(iso: string): string {
 export function SessionHistoryOverview() {
   const {
     mode,
+    novelScenario,
     books,
     docs,
     selectedBookId,
@@ -166,6 +167,7 @@ export function SessionHistoryOverview() {
       message: text,
       providerId: selectedProviderId,
       maxChapter: mode === "novel" ? activeBook?.read_progress_ch : null,
+      scenario: mode === "novel" ? novelScenario : undefined,
     });
   }
 

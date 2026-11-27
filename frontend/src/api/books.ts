@@ -5,6 +5,9 @@ import type {
   BookDetail,
   ChapterDetail,
   ChapterListResponse,
+  DiscoveredEntity,
+  NovelCard,
+  NovelCardType,
   Volume,
   VolumeSplitItem,
   VolumeStatusResponse,
@@ -145,4 +148,73 @@ export const booksApi = {
     apiFetch<{ deleted: boolean }>(`/api/v1/books/${bookId}/wiki/${wikiId}`, {
       method: "DELETE",
     }),
+
+  listCards: (bookId: number, cardType?: NovelCardType) => {
+    const qs = new URLSearchParams({ include_activity: "true" });
+    if (cardType) qs.set("card_type", cardType);
+    return apiFetch<NovelCard[]>(`/api/v1/books/${bookId}/cards?${qs}`);
+  },
+
+  getCard: (bookId: number, cardId: number) =>
+    apiFetch<NovelCard>(`/api/v1/books/${bookId}/cards/${cardId}`),
+
+  generateCard: (
+    bookId: number,
+    payload: {
+      query_name: string;
+      card_type?: NovelCardType;
+      provider_id?: number | null;
+      max_chapter?: number | null;
+      card_id?: number;
+    }
+  ) =>
+    apiFetch<NovelCard>(`/api/v1/books/${bookId}/cards/generate`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  discoverCards: (
+    bookId: number,
+    payload?: { provider_id?: number | null; max_chapter?: number | null }
+  ) =>
+    apiFetch<{ candidates: DiscoveredEntity[] }>(`/api/v1/books/${bookId}/cards/discover`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    }),
+
+  updateCard: (
+    bookId: number,
+    cardId: number,
+    payload: Partial<
+      Pick<
+        NovelCard,
+        | "card_type"
+        | "real_name"
+        | "role_badge"
+        | "aliases"
+        | "titles"
+        | "status_summary"
+        | "summary"
+        | "attributes"
+        | "timeline"
+        | "relations"
+      >
+    >
+  ) =>
+    apiFetch<NovelCard>(`/api/v1/books/${bookId}/cards/${cardId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+
+  syncCardAliases: (bookId: number, cardId: number) =>
+    apiFetch<{ canonical_name: string; aliases: string[]; reindexed_chapters: number }>(
+      `/api/v1/books/${bookId}/cards/${cardId}/sync-aliases`,
+      { method: "POST" }
+    ),
+
+  deleteCard: (bookId: number, cardId: number) =>
+    apiFetch<{ deleted: boolean; card_id: number }>(
+      `/api/v1/books/${bookId}/cards/${cardId}`,
+      { method: "DELETE" }
+    ),
 };
